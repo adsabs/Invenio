@@ -37,6 +37,7 @@ import tempfile
 import urlparse
 import urllib2
 import urllib
+import hashlib
 
 from invenio.config import CFG_OAI_ID_FIELD, \
      CFG_BIBUPLOAD_REFERENCE_TAG, \
@@ -918,16 +919,22 @@ def insert_record_bibxxx(tag, value, pretend=False):
     # determine into which table one should insert the record
     table_name = 'bib'+tag[0:2]+'x'
 
+    value_hash = hashlib.sha256(value).hexdigest()
     # check if the tag, value combination exists in the table
-    query = """SELECT id,value FROM %s """ % table_name
-    query += """ WHERE tag=%s AND value=%s"""
-    params = (tag, value)
+    query = """SELECT id FROM %s """ % table_name
+    query += """ WHERE tag=%s AND value_hash=%s"""
+    params = (tag, value_hash)
     try:
         res = run_sql(query, params)
     except Error, error:
         write_message("   Error during the insert_record_bibxxx function : %s "
             % error, verbose=1, stream=sys.stderr)
-
+    
+    try:
+        row_id = res[0][0]
+        return (table_name, row_id)
+    except IndexError:
+        pass
     # Note: compare now the found values one by one and look for
     # string binary equality (e.g. to respect lowercase/uppercase
     # match), regardless of the charset etc settings.  Ideally we
@@ -936,18 +943,18 @@ def insert_record_bibxxx(tag, value, pretend=False):
     # etc; this approach checks all matched values in Python, not in
     # MySQL, which is less cool, but more conservative, so it should
     # work better on most setups.
-    for row in res:
-        row_id = row[0]
-        row_value = row[1]
-        if row_value == value:
-            return (table_name, row_id)
+#    for row in res:
+#        row_id = row[0]
+#        row_value = row[1]
+#        if row_value == value:
+#            return (table_name, row_id)
 
     # We got here only when the tag,value combination was not found,
     # so it is now necessary to insert the tag,value combination into
     # bibxxx table as new.
     query = """INSERT INTO %s """ % table_name
-    query += """ (tag, value) values (%s , %s)"""
-    params = (tag, value)
+    query += """ (tag, value, value_hash) values (%s , %s, %s)"""
+    params = (tag, value, value_hash)
     try:
         if not pretend:
             row_id = run_sql(query, params)
