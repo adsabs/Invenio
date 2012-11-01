@@ -33,9 +33,9 @@ from invenio.config import CFG_BIBAUTHORID_AUTHOR_TICKET_ADMIN_EMAIL
 from invenio.bibformat import format_record
 from invenio.session import get_session
 from invenio.search_engine_utils import get_fieldvalues
-from invenio.bibauthorid_webapi import get_person_redirect_link, get_canonical_id_from_person_id
+from invenio.bibauthorid_webapi import get_person_redirect_link, get_canonical_id_from_person_id, get_person_names_from_id
 from invenio.bibauthorid_webapi import get_personiID_external_ids
-from invenio.bibauthorid_frontinterface import get_bibrefrec_name_string, get_uid_from_personid
+from invenio.bibauthorid_frontinterface import get_uid_from_personid
 from invenio.bibauthorid_frontinterface import get_bibrefrec_name_string
 from invenio.bibauthorid_frontinterface import get_canonical_id_from_personid
 from invenio.messages import gettext_set_language, wash_language
@@ -375,7 +375,7 @@ class Template:
         @type verbiage_dict: dict
         '''
         #batchprocess?mconfirm=True&bibrefs=['100:17,16']&pid=1
-        str = ('<!--0!--><span id="aid_status_details"> '
+        string = ('<!--0!--><span id="aid_status_details"> '
                 '<a rel="nofollow" id="aid_confirm" href="%(url)s/person/action?confirm=True&selection=%(ref)s&pid=%(pid)s">'
                 '<img src="%(url)s/img/aid_check.png" alt="%(alt_confirm)s" />'
                 '%(confirm_text)s</a><br />'
@@ -385,7 +385,7 @@ class Template:
                 '<a rel="nofollow" id="aid_to_other" href="%(url)s/person/action?to_other_person=True&selection=%(ref)s">'
                 '<img src="%(url)s/img/aid_to_other.png" alt="%(alt_to_other)s" />'
                 '%(to_other_text)s</a> </span>')
-        return (str
+        return (string
                 % ({'url': CFG_SITE_URL, 'ref': bibref, 'pid': pid,
                     'alt_confirm':verbiage_dict['alt_confirm'],
                     'confirm_text':verbiage_dict['confirm_text'],
@@ -931,7 +931,7 @@ class Template:
             h('  <div id="tabData">')
             r = verbiage_dict['data_ns']
             h('<noscript><h5>%s</h5></noscript>' % r)
-            canonical_name = get_canonical_id_from_person_id(person_id)
+            canonical_name = str(get_canonical_id_from_person_id(person_id))
             if '.' in str(canonical_name) and not isinstance(canonical_name, int):
                 canonical_name = canonical_name[0:canonical_name.rindex('.')]
             h('<div><div> <strong> Canonical name setup </strong>')
@@ -957,9 +957,9 @@ class Template:
             external_ids = get_personiID_external_ids(person_id)
             h('<div>')
             h('<strong> External IDs </strong><br>')
-            for id in external_ids:
+            for idx in external_ids:
                 for k in external_ids[id]:
-                    h('  %s : %s <br>' % (id, k))
+                    h('  %s : %s <br>' % (idx, k))
             h('</div>')
 
             h("  </div>")
@@ -1605,7 +1605,6 @@ class Template:
         ' or be sent to our operator for approval if needed, usually within 24'
         ' hours.'
         '</p>')
-
         h('If you have '
           'any questions or encounter any problems please contact us here: '
           '<a rel="nofollow" href="mailto:%s">%s</a></p>'
@@ -1634,6 +1633,94 @@ class Template:
              CFG_BIBAUTHORID_AUTHOR_TICKET_ADMIN_EMAIL))
 
         return "\n".join(html)
+
+
+    def tmpl_claim_profile(self):
+        '''
+        claim profile
+        '''
+        html = []
+        h = html.append
+
+        h('<p>Unfortunately it was not possible to automatically match your arXiv account to an INSPIRE person profile. Please choose the correct person profile from the list below.')
+
+        h('If your profile is not in the list or none of them represents you correctly, please select the one which fits you best or choose '
+          'to create a new one; keep in mind that no matter what your choice is, you will be able to correct your publication list until it contains all of your publications.'
+          ' In case of any question please do not hesitate to contact us at <a rel="nofollow" href="mailto:%s">%s</a></p>' % (CFG_BIBAUTHORID_AUTHOR_TICKET_ADMIN_EMAIL,
+             CFG_BIBAUTHORID_AUTHOR_TICKET_ADMIN_EMAIL))
+
+        return "\n".join(html)
+
+
+    def tmpl_profile_option(self, top5_list):
+        '''
+        show profile option
+        '''
+        html = []
+        h = html.append
+
+        h('<table border="0"> <tr>')
+        for pid in top5_list:
+            pid = int(pid)
+            canonical_id = get_canonical_id_from_personid(pid)
+            full_name = get_person_names_from_id(pid)
+            name_length = 0
+            most_common_name = ""
+            for name in full_name:
+                if len(name[0]) > name_length:
+                    most_common_name = name [0]
+
+            if len(full_name) > 0:
+                name_string = most_common_name
+            else:
+                name_string = "[No name available]  "
+
+            if len(canonical_id) > 0:
+                canonical_name_string = "(" + canonical_id[0][0] + ")"
+                canonical_id = canonical_id[0][0]
+            else:
+                canonical_name_string = "(" + pid + ")"
+                canonical_id = pid
+
+            h('<td>')
+            h('%s ' % (name_string))
+            h('<a href="%s/author/%s" target="_blank"> %s </a>' % (CFG_SITE_URL, canonical_id, canonical_name_string))
+            h('</td>')
+            h('<td>')
+            h('<INPUT TYPE="BUTTON" VALUE="This is my profile" ONCLICK="window.location.href=\'welcome?chosen_profile=%s\'">' % (str(pid)))
+            h('</td>')
+            h('</tr>')
+        h('</table>')
+        h('</br>')
+        if top5_list:
+            h('If none of the above is your profile it seems that you cannot match any of the existing accounts.</br>Would you like to create one?')
+            h('<INPUT TYPE="BUTTON" VALUE="Create an account" ONCLICK="window.location.href=\'welcome?chosen_profile=%s\'">' % (str(-1)))
+
+
+        else:
+            h('It seems that you cannot match any of the existig accounts.</br>Would you like to create one?')
+            h('<INPUT TYPE="BUTTON" VALUE="Create an account" ONCLICK="window.location.href=\'welcome?chosen_profile=%s\'">' % (str(-1)))
+
+        return "\n".join(html)
+
+    def tmpl_profile_not_available(self):
+        '''
+        show profile option
+        '''
+        html = []
+        h = html.append
+
+        h('<p> Unfortunately the profile that you previously chose is no longer available. A new empty profile has been created. You will be able to correct '
+          'your publication list until it contains all of your publications.</p>')
+        return "\n".join(html)
+
+    def tmpl_profile_assigned_by_user  (self):
+        html = []
+        h = html.append
+
+        h('<p> Congratulations you have successfully claimed the chosen profile.</p>')
+        return "\n".join(html)
+
 
     def tmpl_claim_stub(self, person='-1'):
         '''
@@ -1673,9 +1760,9 @@ class Template:
                     "with person %s." % canon_name[0][0])
         else:
             body = ("Warning: your arXiv.org account is associated with an empty profile. "
-                    "This can happen if it the first time you log in and you do not have any "
-                    "paper directly claimen in arXiv.org which we can use to identify you."
-                    "If this is the case, you are welcome to search and claim your papers to your"
+                    "This can happen if it is the first time you log in and you do not have any "
+                    "paper directly claimed in arXiv.org."
+                    " In this case, you are welcome to search and claim your papers to your"
                     " new profile manually, or please contact us to get help.")
 
         body += ("<br>You are very welcome to contact us shall you need any help or explanation"

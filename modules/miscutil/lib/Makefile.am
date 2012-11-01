@@ -15,6 +15,8 @@
 ## along with Invenio; if not, write to the Free Software Foundation, Inc.,
 ## 59 Temple Place, Suite 330, Boston, MA 02111-1307, USA.
 
+SUBDIRS = upgrades
+
 pylibdir = $(libdir)/python/invenio
 
 pylib_DATA = __init__.py \
@@ -43,6 +45,8 @@ pylib_DATA = __init__.py \
              htmlutils_unit_tests.py \
              testutils.py \
              testutils_regression_tests.py \
+             inveniocfg_upgrader.py \
+             inveniocfg_upgrader_unit_tests.py \
              invenio_connector.py \
              invenio_connector_regression_tests.py \
              urlutils.py \
@@ -51,6 +55,7 @@ pylib_DATA = __init__.py \
              intbitset_unit_tests.py \
              intbitset_helper.py \
              inveniocfg.py \
+             inveniocfg_unit_tests.py \
              shellutils.py \
              shellutils_unit_tests.py \
              pluginutils.py \
@@ -62,7 +67,16 @@ pylib_DATA = __init__.py \
              plotextractor_unit_tests.py \
              plotextractor_regression_tests.py \
              plotextractor_config.py \
-             solrutils.py \
+             solrutils_bibindex_indexer.py \
+             solrutils_bibindex_searcher.py \
+             solrutils_bibrank_indexer.py \
+             solrutils_bibrank_searcher.py \
+             solrutils_config.py \
+             xapianutils_bibindex_indexer.py \
+             xapianutils_bibindex_searcher.py \
+             xapianutils_bibrank_indexer.py \
+             xapianutils_bibrank_searcher.py \
+             xapianutils_config.py \
              remote_debugger.py \
              remote_debugger_config.py \
              remote_debugger_wsgi_reload.py \

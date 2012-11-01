@@ -6,6 +6,243 @@ releases.  For more information about the current release, please
 consult RELEASE-NOTES.  For more information about changes, please
 consult ChangeLog.
 
+Invenio v1.1.0 -- released 2012-10-21
+-------------------------------------
+
+ *) BatchUploader: RESTful interface, runtime checks, TextMARC input,
+    job priority selection
+
+ *) BibAuthorID: new automatic author disambiguation and paper
+    claiming facility
+
+ *) BibCatalog: storage of ticket requestor, default RT user
+
+ *) BibCirculation: security fixes
+
+ *) BibClassify: UI improvements and refactoring
+
+ *) BibConvert: new BibTeX-to-MARCXML conversion, new oaidmf2marcxml
+    conversion, fixes for WORDS
+
+ *) BibDocFile: new filesystem cache for faster statistics, caseless
+    authorisation, disable HTTP range requests, improve file format
+    policies, and more
+
+ *) BibEdit: new options related to preview and printing, reference
+    curation, autocompletion, record and field template manager,
+    editing fields and subfields, per-collection authorisations, use
+    of knowledge bases, and more
+
+ *) BibEditMulti: new actions with conditions on fields, partial
+    matching for subfields, faster preview generation, and more
+
+ *) BibEncode: new audio and video media file processing tool, new
+    Video demo collection
+
+ *) BibFormat: new full-text snippet display facility, new
+    configuration for I18N caching, updates to EndNote, Excel, Dublin
+    Core and other formats, updates to formatting elements such as
+    DOI, author, updates to podcast output, updates to XSLT
+    processing, and more
+
+ *) OAIHarvest: new configurable workflow with reference extraction,
+    new author list extraction post process, upload priority, OpenAIRE
+    compliance, better handling of timeouts, and more
+
+ *) BibIndex: new full-text indexing via Solr, new support for author
+    ID indexing, better author tokeniser
+
+ *) BibKnowledge: dynamic knowledge bases for record editor, support
+    for JSON format
+
+ *) BibMatch: new matching of restricted collections
+
+ *) BibMerge: subfield order in slave record, confirmation pop up,
+    record selection bug fix
+
+ *) BibRank: new index term count ranking method, new support for flot
+    graphs, updates to citation graphs
+
+ *) BibRecord: new possibility to use lxml parser, sanity checks
+
+ *) BibSched: new motd-like facility for queue monitor, new
+    continuable error status for tasks, new tasklet framework, new
+    multi-node support, new monotask support, new support for task
+    sequences, improvements to scheduling algorithm
+
+ *) BibSort: new in-memory fast sorting tool using configurable
+    buckets
+
+ *) BibUpload: new automatic generation of MARC tag 005, new
+    `--callback-url' CLI parameter, fixes for appending existing
+    files, fixes for multiple 001 tags, and more
+
+ *) WebAccess: new external person ID support, performance
+    improvements, robot manager UI improvements, fixes for firerole
+    handling,
+
+ *) WebAlert: new alert description facility, fixes for restricted
+    collections
+
+ *) WebApiKey: new user-signed Web API key facility
+
+ *) WebAuthorProfile: new author pages with dynamic box layout
+
+ *) WebBasket: add to basket interface improvements, better XML
+    export, fixes for external records and other improvements
+
+ *) WebComment: new collapsible comment support, new permalink to
+    comments, loss prevention of unsubmitted comments, tidying up HTML
+    markup of comments, and more
+
+ *) WebJournal: new Open Graph markup, more customisable newsletter,
+    redirect to latest release of specific category, refresh chosen
+    collections on release, remove unnecessary encoding/decoding,
+    update weather widget for new APIs, and more
+
+ *) WebSearch: new index-time and search-time synonym support, new
+    Open Graph markup, new Google Scholar friendly metadata in page
+    header, new limit option for wildcard queries, new support for
+    access to merged records, new next/previous/back link support, new
+    `authorcount' indexing and searching, new relative date search
+    facility, clean OpenSearch support, improved speed, improvements
+    to SPIRES query syntax support, improvements to self-cite math,
+    primary collection guessing, other numerous fixes
+
+ *) WebSession: new useful guest sessions, reintroduces configurable
+    IP checking, enforcement of nickname refresh, several other fixes
+
+ *) WebStat: new login statistics, new custom query summary, error
+    analyser, custom event improvements
+
+ *) WebStyle: new display restriction flag for restricted records, new
+    initial right-to-left language support, authenticated user and
+    HTTPS support, IP check for proxy configurations, layout updates
+    and fixes for MSIE, and more
+
+ *) WebSubmit: new initial support for converting to PDF/X, new
+    embargo support, better LibreOffice compatibility, better async
+    file upload, enhancements for Link_Records, support for hiding
+    HIDDEN files in document manager, configurable initial value for
+    counter, make use of BibSched task sequences, and more
+
+ *) installation: updates to jQuery, CKEditor, unoconv, and other
+    prerequisites
+
+ *) dbdump: new compression support, reworked error handling
+
+ *) dbquery: new possibility to query DB slave nodes, new dict-like
+    output, fix for MySQL 5.5.3 and higher versions
+
+ *) errorlib: stack analysis improvements, outline style improvements
+    for invenio.err
+
+ *) htmlutils: improvements to HTML markup removal, HTML tidying
+
+ *) I18N: new Arabic and Lithuanian translations, updates to Catalan,
+    Czech, French, German, Greek, Italian, Russian, Slovak, Spanish
+    translations
+
+ *) intbitset: new performance improvements, new get item support, new
+    pickle support, several memory leak fixes
+
+ *) inveniocfg: new automated Invenio Upgrader tool
+
+ *) InvenioConnector: new search with retries, improved search
+    parameters, improved local site check, use of Invenio user agent
+
+ *) jsonutils: new JSON utility library
+
+ *) mailutils: possibility to specify Reply-To header, fixes to
+    multipart
+
+ *) plotextractor: better TeX detection, better PDF harvesting from
+    arXiv, configurable sleep timer
+
+ *) pluginutils: new create_enhanced_plugin_builder API, external
+    plugin loading
+
+ *) RefExtract: new daemon operation mode, new DOI recognition, better
+    author recognition, new author knowledge base
+
+ *) remote debugger: new remote debuggng support
+
+ *) sequtils: new sequence generator tool
+
+ *) solrutils: new support for full-text query dispatching to Solr
+
+ *) testutils: new Selenium web test framework
+
+ *) textutils: updates to string-to-ascii functions, LaTeX symbols to
+    Unicode
+
+ *) urlutils: fix for redirect_to_url
+
+ *) xmlmarclint: fix for error report formatting
+
+ *) ... and other numerous smaller fixes and improvements
+
+Invenio v1.0.2 -- released 2012-10-19
+-------------------------------------
+
+ *) BibConvert: fix for static files in admin guide
+
+ *) BibEdit: regression test case fix
+
+ *) BibFormat: fix call to bfe_primary_report_number; revert fix for
+    format validation report
+
+ *) BibHarvest: OAI harvesting via HTTP proxy
+
+ *) BibRank: begin_date initialisation in del_recids(); INSERT DELAYED
+    INTO rnkPAGEVIEWS; user-friendlier message for similar docs
+
+ *) BibUpload: clarify correct/replace mode help
+
+ *) WebJournal: catch ValueError when reading cache; use
+    CFG_TMPSHAREDDIR in admin UI
+
+ *) WebSearch: allow webcoll to query hidden tags; external collection
+    search fix; external search XSS vulnerability fix; fix for
+    parentheses inside quotes; get_collection_reclist() fix; more uses
+    of `rg` configurable default; 'verbose' mode available to admins
+    only; XSS and verbose improvements
+
+ *) WebSession: fix possibly undefined variables; prevent nickname
+    modification
+
+ *) WebStyle: workaround IE bug with cache and HTTPS
+
+ *) WebSubmit: configurable Document File Manager; fix JS check for
+    mandatory fields; unoconv calling fix
+
+ *) bibdocfile: guess_format_from_url() improvement;
+    guess_format_from_url() improvements; INSERT DELAYED INTO
+    rnkDOWNLOADS
+
+ *) global: removal of psyco
+
+ *) I18N: Spanish and Catalan updates to Search Tips; updates to
+    German translation
+
+ *) installation: fix for jQuery UI custom; fix md5sum example
+    arguments; new index on session.session_expiry
+
+ *) intbitset: fix memory leak
+
+ *) inveniogc: tmp directory removal improvements
+
+ *) urlutils: MS Office redirection workaround
+
+CDS Invenio v0.99.6 -- released 2012-10-18
+------------------------------------------
+
+ *) improved XSS safety in external collection searching (WebSearch)
+
+ *) verbose level in the search results pages is now available only to
+    admins, preventing potential restricted record ID disclosure even
+    though record content would remain restricted (WebSearch)
+
 Invenio v1.0.1 -- released 2012-06-28
 -------------------------------------
 

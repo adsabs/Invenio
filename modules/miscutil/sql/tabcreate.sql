@@ -1746,6 +1746,7 @@ CREATE TABLE IF NOT EXISTS idxINDEX (
   description varchar(255) NOT NULL default '',
   last_updated datetime NOT NULL default '0000-00-00 00:00:00',
   stemming_language varchar(10) NOT NULL default '',
+  indexer varchar(10) NOT NULL default 'native',
   PRIMARY KEY  (id),
   UNIQUE KEY name (name)
 ) ENGINE=MyISAM;
@@ -4186,4 +4187,13 @@ CREATE TABLE IF NOT EXISTS `wapCACHE` (
   INDEX `last_updated-b` (`last_updated`),
   INDEX `status-b` (`object_status`)
 ) ENGINE=MyISAM;
+
+CREATE TABLE IF NOT EXISTS upgrade (
+  upgrade varchar(255) NOT NULL,
+  applied DATETIME NOT NULL,
+  PRIMARY KEY (upgrade)
+) ENGINE=MyISAM;
+
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_release_1_1_0',NOW());
+
 -- end of file

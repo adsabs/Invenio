@@ -65,6 +65,8 @@ from invenio.config import \
      CFG_SITE_RECORD, \
      CFG_WEBSEARCH_PREV_NEXT_HIT_LIMIT
 
+from invenio.search_engine_config import CFG_WEBSEARCH_RESULTS_OVERVIEW_MAX_COLLS_TO_PRINT
+
 from invenio.dbquery import run_sql
 from invenio.messages import gettext_set_language
 from invenio.urlutils import make_canonical_urlargd, drop_default_urlargd, create_html_link, create_url
@@ -1489,7 +1491,7 @@ class Template:
 
         body = '''<table class="latestadditionsbox">'''
         if grid_layout:
-            body += '<div>'
+            body += '<tr><td><div>'
         for recid in recids:
             if grid_layout:
                 body += '''
@@ -1513,7 +1515,7 @@ class Template:
                       }
         if grid_layout:
             body += '''<div style="clear:both"></div>'''
-            body += '''</div>'''
+            body += '''</div></td></tr>'''
         body += "</table>"
         if more_link:
             body += '<div align="right"><small>' + \
@@ -2969,23 +2971,48 @@ class Template:
                          'x_nb_seconds': '%.2f' % cpu_time}
                       }
         # then print hits per collection:
+        out += """<script type="text/javascript">
+            $(document).ready(function() {
+                $('a.morecolls').click(function() {
+                    $('.morecollslist').show();
+                    $(this).hide();
+                    $('.lesscolls').show();
+                    return false;
+                });
+                $('a.lesscolls').click(function() {
+                    $('.morecollslist').hide();
+                    $(this).hide();
+                    $('.morecolls').show();
+                    return false;
+                });
+            });
+            </script>"""
+        count = 0
         for coll in colls:
             if results_final_nb.has_key(coll['code']) and results_final_nb[coll['code']] > 0:
+                count += 1
                 out += """
-                      <strong><a href="#%(coll)s">%(coll_name)s</a></strong>, <a href="#%(coll)s">%(number)s</a><br />""" % \
-                                      {'coll' : coll['id'],
+                      <span %(collclass)s><strong><a href="#%(coll)s">%(coll_name)s</a></strong>, <a href="#%(coll)s">%(number)s</a><br /></span>""" % \
+                                      {'collclass' : count > CFG_WEBSEARCH_RESULTS_OVERVIEW_MAX_COLLS_TO_PRINT and 'class="morecollslist" style="display:none"' or '',
+                                       'coll' : coll['id'],
                                        'coll_name' : cgi.escape(coll['name']),
                                        'number' : _("%s records found") % \
                                        ('<strong>' + self.tmpl_nice_number(results_final_nb[coll['code']], ln) + '</strong>')}
             # the following is used for hosted collections that have timed out,
             # i.e. for which we don't know the exact number of results yet.
             elif results_final_nb.has_key(coll['code']) and results_final_nb[coll['code']] == -963:
+                count += 1
                 out += """
-                      <strong><a href="#%(coll)s">%(coll_name)s</a></strong><br />""" % \
-                                      {'coll' : coll['id'],
+                      <span %(collclass)s><strong><a href="#%(coll)s">%(coll_name)s</a></strong><br /></span>""" % \
+                                      {'collclass' : count > CFG_WEBSEARCH_RESULTS_OVERVIEW_MAX_COLLS_TO_PRINT and 'class="morecollslist" style="display:none"' or '',
+                                       'coll' : coll['id'],
                                        'coll_name' : cgi.escape(coll['name']),
                                        'number' : _("%s records found") % \
                                        ('<strong>' + self.tmpl_nice_number(results_final_nb[coll['code']], ln) + '</strong>')}
+        if count > CFG_WEBSEARCH_RESULTS_OVERVIEW_MAX_COLLS_TO_PRINT:
+            out += """<a class="lesscolls" style="display:none; color:red; font-size:small" href="#"><i>%s</i></a>""" % _("Show less collections")
+            out += """<a class="morecolls" style="color:red; font-size:small" href="#"><i>%s</i></a>""" % _("Show all collections")
+
         out += "</td></tr></tbody></table>"
         return out
 
