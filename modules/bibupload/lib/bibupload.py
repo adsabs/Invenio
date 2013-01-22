@@ -2442,7 +2442,7 @@ Examples:
 \t\t\tinside a form field called "results".
 """,
             version=__revision__,
-            specific_params=("ircazdS:fno",
+            specific_params=("ircazdS:fnop",
                  [
                    "insert",
                    "replace",
@@ -2459,6 +2459,7 @@ Examples:
                    "callback-url=",
                    "nonce=",
                    "special-treatment=",
+                   "pickled-input-file",
                  ]),
             task_submit_elaborate_specific_parameter_fnc=task_submit_elaborate_specific_parameter,
             task_run_fnc=task_run_core)
