@@ -38,6 +38,7 @@ import urlparse
 import urllib2
 import urllib
 import hashlib
+import pickle
 
 from invenio.config import CFG_OAI_ID_FIELD, \
      CFG_BIBUPLOAD_REFERENCE_TAG, \
@@ -2565,6 +2566,10 @@ def task_submit_elaborate_specific_parameter(key, value, opts, args): # pylint: 
         else:
             print >> sys.stderr, """The specified value is not in the list of allowed special treatments codes: %s""" % CFG_BIBUPLOAD_ALLOWED_SPECIAL_TREATMENTS
             return False
+    #parameter that indicates that I'm submitting pikled files
+    elif key in ("--pickled-input-file", ):
+        task_set_option('pickled_input_file', True)
+    
     else:
         return False
     return True
@@ -2730,8 +2735,15 @@ def task_run_core():
 
     if task_get_option('file_path') is not None:
         write_message("start preocessing", verbose=3)
-        task_update_progress("Reading XML input")
-        recs = xml_marc_to_records(open_marc_file(task_get_option('file_path')))
+        if task_get_option('pickled_input_file') is None:
+            task_update_progress("Reading XML input")
+            recs = xml_marc_to_records(open_marc_file(task_get_option('file_path')))
+        else:
+            task_update_progress("Reading PICKLED input")
+            file_obj = open(task_get_option('file_path'), 'rb')
+            recs = pickle.load(file_obj)
+            file_obj.close()
+            
         stat['nb_records_to_upload'] = len(recs)
         write_message("   -Open XML marc: DONE", verbose=2)
         task_sleep_now_if_required(can_stop_too=True)
