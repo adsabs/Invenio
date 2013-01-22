@@ -76,6 +76,7 @@ from invenio.config import \
      CFG_WEBSEARCH_RSS_TTL, \
      CFG_WEBSEARCH_RSS_MAX_CACHED_REQUESTS, \
      CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE, \
+     CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES, \
      CFG_WEBDIR, \
      CFG_WEBSEARCH_USE_MATHJAX_FOR_FORMATS, \
      CFG_WEBSEARCH_MAX_RECORDS_IN_GROUPS, \
@@ -156,6 +157,8 @@ def wash_search_urlargd(form):
     if argd.has_key('as'):
         argd['aas'] = argd['as']
         del argd['as']
+    if argd.get('aas', CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE) not in CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES:
+        argd['aas'] = CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE
 
     # Sometimes, users pass ot=245,700 instead of
     # ot=245&ot=700. Normalize that.
@@ -309,6 +312,8 @@ class WebInterfaceRecordPages(WebInterfaceDirectory):
             url = CFG_SITE_URL + '/' + CFG_SITE_RECORD + '/%s?ln=%s'
             url %= (str(merged_recid), argd['ln'])
             redirect_to_url(req, url)
+        elif record_status == -1:
+            req.status = apache.HTTP_GONE ## The record is gone!
 
         # mod_python does not like to return [] in case when of=id:
         out = perform_request_search(req, **argd)
@@ -667,6 +672,8 @@ class WebInterfaceSearchInterfacePages(WebInterfaceDirectory):
                 if argd.has_key('as'):
                     argd['aas'] = argd['as']
                     del argd['as']
+                if argd.get('aas', CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE) not in CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES:
+                    argd['aas'] = CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE
 
                 return display_collection(req, **argd)
 
@@ -780,6 +787,8 @@ class WebInterfaceSearchInterfacePages(WebInterfaceDirectory):
         if argd.has_key('as'):
             argd['aas'] = argd['as']
             del argd['as']
+        if argd.get('aas', CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE) not in (0, 1):
+            argd['aas'] = CFG_WEBSEARCH_DEFAULT_SEARCH_INTERFACE
 
         # If we specify no collection, then we don't need to redirect
         # the user, so that accessing <http://yoursite/> returns the

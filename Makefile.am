@@ -26,11 +26,11 @@ EXTRA_DIST = UNINSTALL THANKS RELEASE-NOTES configure-tests.py config.nice.in \
 
 # current MathJax version and packages
 # See also modules/miscutil/lib/htmlutils.py (get_mathjax_header)
-MJV = 1.1
-MATHJAX = https://github.com/mathjax/MathJax/zipball/v$(MJV)
+MJV = 2.1
+MATHJAX = http://invenio-software.org/download/mathjax/MathJax-v$(MJV).zip
 
 # current CKeditor version
-CKV = 3.6.2
+CKV = 3.6.6
 CKEDITOR = ckeditor_$(CKV).zip
 
 # current MediaElement.js version
@@ -90,9 +90,10 @@ install-mathjax-plugin:
 	@echo "***********************************************************"
 	rm -rf /tmp/invenio-mathjax-plugin
 	mkdir /tmp/invenio-mathjax-plugin
+	rm -fr ${prefix}/var/www/MathJax
 	mkdir -p ${prefix}/var/www/MathJax
 	(cd /tmp/invenio-mathjax-plugin && \
-	wget '$(MATHJAX)' -O mathjax.zip --no-check-certificate && \
+	wget '$(MATHJAX)' -O mathjax.zip && \
 	unzip -q mathjax.zip && cd mathjax-MathJax-* && cp -ur * \
 	${prefix}/var/www/MathJax)
 	rm -fr /tmp/invenio-mathjax-plugin
@@ -133,6 +134,20 @@ uninstall-jscalendar-plugin:
 	@echo "***********************************************************"
 	@echo "** The jsCalendar plugin was successfully uninstalled.   **"
 	@echo "***********************************************************"
+
+install-js-test-driver:
+	@echo "*******************************************************"
+	@echo "** Installing js-test-driver, please wait...         **"
+	@echo "*******************************************************"
+	mkdir -p $(prefix)/lib/java/js-test-driver && \
+	cd $(prefix)/lib/java/js-test-driver && \
+	wget http://invenio-software.org/download/js-test-driver/JsTestDriver-1.3.5.jar -O JsTestDriver.jar
+
+uninstall-js-test-driver:
+	@rm -rvf ${prefix}/lib/java/js-test-driver
+	@echo "*********************************************************"
+	@echo "** The js-test-driver was successfully uninstalled.    **"
+	@echo "*********************************************************"
 
 install-jquery-plugins:
 	@echo "***********************************************************"
@@ -337,7 +352,10 @@ update-v0.99.4-tables:
 update-v0.99.5-tables:
 	@echo "Nothing to do; table structure did not change between v0.99.5 and v0.99.6."
 
-update-v0.99.6-tables: # from v0.99.6 to v1.0.0-rc0
+update-v0.99.6-tables:
+	@echo "Nothing to do; table structure did not change between v0.99.6 and v0.99.7."
+
+update-v0.99.7-tables: # from v0.99.7 to v1.0.0-rc0
 	echo "RENAME TABLE oaiARCHIVE TO oaiREPOSITORY;" | ${prefix}/bin/dbexec
 	cat $(top_srcdir)/modules/miscutil/sql/tabcreate.sql | grep -v 'INSERT INTO upgrade' | ${prefix}/bin/dbexec
 	echo "INSERT INTO knwKB (id,name,description,kbtype) SELECT id,name,description,'' FROM fmtKNOWLEDGEBASES;" | ${prefix}/bin/dbexec

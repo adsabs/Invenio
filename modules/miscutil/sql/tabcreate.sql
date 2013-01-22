@@ -1,5 +1,5 @@
 -- This file is part of Invenio.
--- Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012 CERN.
+-- Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 CERN.
 --
 -- Invenio is free software; you can redistribute it and/or
 -- modify it under the terms of the GNU General Public License as
@@ -2678,6 +2678,35 @@ CREATE TABLE IF NOT EXISTS rnkCITATIONDATAEXT (
   KEY extcitepubinfo (extcitepubinfo)
 ) ENGINE=MyISAM;
 
+-- tables for self-citations computation
+
+CREATE TABLE IF NOT EXISTS `rnkRECORDSCACHE` (
+  `id_bibrec` int(10) unsigned NOT NULL,
+  `authorid` bigint(10) NOT NULL,
+  PRIMARY KEY (`id_bibrec`,`authorid`)
+) ENGINE=MyISAM;
+
+CREATE TABLE IF NOT EXISTS `rnkEXTENDEDAUTHORS` (
+  `id` int(10) unsigned NOT NULL,
+  `authorid` bigint(10) NOT NULL,
+  PRIMARY KEY (`id`,`authorid`)
+) ENGINE=MyISAM;
+
+CREATE TABLE IF NOT EXISTS `rnkSELFCITES` (
+  `id_bibrec` int(10) unsigned NOT NULL,
+  `count` int(10) unsigned NOT NULL,
+  `references` text NOT NULL,
+  `last_updated` datetime NOT NULL,
+  PRIMARY KEY (`id_bibrec`)
+) ENGINE=MyISAM;
+
+-- a table for storing invalid or ambiguous references encountered
+CREATE TABLE IF NOT EXISTS rnkCITATIONDATAERR (
+  `type` ENUM('multiple-matches', 'not-well-formed'),
+  citinfo varchar(255) NOT NULL default '',
+  PRIMARY KEY (`type`, citinfo)
+) ENGINE=MyISAM;
+
 -- tables for collections and collection tree:
 
 CREATE TABLE IF NOT EXISTS collection (
@@ -2894,11 +2923,11 @@ CREATE TABLE IF NOT EXISTS tag (
 CREATE TABLE IF NOT EXISTS bibdoc (
   id mediumint(9) unsigned NOT NULL auto_increment,
   status text NOT NULL default '',
-  docname varchar(250) COLLATE utf8_bin NOT NULL default 'file',
+  docname varchar(250) COLLATE utf8_bin default NULL, -- now NULL means that this is new version bibdoc
   creation_date datetime NOT NULL default '0000-00-00',
   modification_date datetime NOT NULL default '0000-00-00',
   text_extraction_date datetime NOT NULL default '0000-00-00',
-  more_info mediumblob NULL default NULL,
+  doctype varchar(255),
   PRIMARY KEY  (id),
   KEY docname (docname),
   KEY creation_date (creation_date),
@@ -2908,17 +2937,37 @@ CREATE TABLE IF NOT EXISTS bibdoc (
 CREATE TABLE IF NOT EXISTS bibrec_bibdoc (
   id_bibrec mediumint(9) unsigned NOT NULL default '0',
   id_bibdoc mediumint(9) unsigned NOT NULL default '0',
+  docname varchar(250) COLLATE utf8_bin NOT NULL default 'file',
   type varchar(255),
+  KEY docname (docname),
   KEY  (id_bibrec),
   KEY  (id_bibdoc)
 ) ENGINE=MyISAM;
 
 CREATE TABLE IF NOT EXISTS bibdoc_bibdoc (
-  id_bibdoc1 mediumint(9) unsigned NOT NULL,
-  id_bibdoc2 mediumint(9) unsigned NOT NULL,
-  type varchar(255),
+  id mediumint(9) unsigned NOT NULL auto_increment,
+  id_bibdoc1 mediumint(9) unsigned DEFAULT NULL,
+  version1 tinyint(4) unsigned, -- NULL means all versions
+  format1 varchar(50),
+  id_bibdoc2 mediumint(9) unsigned DEFAULT NULL,
+  version2 tinyint(4) unsigned, -- NULL means all versions
+  format2 varchar(50),
+  rel_type varchar(255),
   KEY  (id_bibdoc1),
-  KEY  (id_bibdoc2)
+  KEY  (id_bibdoc2),
+  KEY  (id)
+) ENGINE=MyISAM;
+
+-- Storage of moreInfo fields
+CREATE TABLE IF NOT EXISTS bibdocmoreinfo (
+  id_bibdoc mediumint(9) unsigned DEFAULT NULL,
+  version tinyint(4) unsigned DEFAULT NULL, -- NULL means all versions
+  format VARCHAR(50) DEFAULT NULL,
+  id_rel mediumint(9) unsigned DEFAULT NULL,
+  namespace VARCHAR(25) DEFAULT NULL, -- namespace in the moreinfo dictionary
+  data_key VARCHAR(25), -- key in the moreinfo dictionary
+  data_value MEDIUMBLOB,
+  KEY (id_bibdoc, version, format, id_rel, namespace, data_key)
 ) ENGINE=MyISAM;
 
 CREATE TABLE IF NOT EXISTS bibdocfsinfo (
@@ -3665,7 +3714,7 @@ CREATE TABLE IF NOT EXISTS jrnISSUE (
 
 CREATE TABLE IF NOT EXISTS hstRECORD (
   id_bibrec mediumint(8) unsigned NOT NULL,
-  marcxml blob NOT NULL,
+  marcxml longblob NOT NULL,
   job_id mediumint(15) unsigned NOT NULL,
   job_name varchar(255) NOT NULL,
   job_person varchar(255) NOT NULL,
@@ -4046,6 +4095,7 @@ CREATE TABLE IF NOT EXISTS `xtrJOB` (
   `id` tinyint(4) NOT NULL AUTO_INCREMENT,
   `name` varchar(30) NOT NULL,
   `last_updated` datetime NOT NULL,
+  `last_recid` mediumint(8) unsigned NOT NULL,
   PRIMARY KEY (`id`)
 ) ENGINE=MyISAM;
 
@@ -4188,12 +4238,39 @@ CREATE TABLE IF NOT EXISTS `wapCACHE` (
   INDEX `status-b` (`object_status`)
 ) ENGINE=MyISAM;
 
+-- tables for goto:
+CREATE TABLE IF NOT EXISTS goto (
+  label varchar(150) NOT NULL,
+  plugin varchar(150) NOT NULL,
+  parameters text NOT NULL,
+  creation_date datetime NOT NULL,
+  modification_date datetime NOT NULL,
+  PRIMARY KEY (label),
+  KEY (creation_date),
+  KEY (modification_date)
+) ENGINE=MyISAM;
+
+-- tables for invenio_upgrader
 CREATE TABLE IF NOT EXISTS upgrade (
   upgrade varchar(255) NOT NULL,
   applied DATETIME NOT NULL,
   PRIMARY KEY (upgrade)
 ) ENGINE=MyISAM;
 
+-- maint-1.1 upgrade recipes:
 INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_release_1_1_0',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_10_31_tablesorter_location',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_01_lower_user_email',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_21_aiduserinputlog_userid_check',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_15_hstRECORD_marcxml_longblob',NOW());
+
+-- master upgrade recipes:
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_10_29_idxINDEX_new_indexer_column',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_04_circulation_and_linkback_updates',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_07_xtrjob_last_recid',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_27_new_selfcite_tables',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_12_11_new_citation_errors_table',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2013_01_08_new_goto_table',NOW());
+INSERT INTO upgrade (upgrade, applied) VALUES ('invenio_2012_11_15_bibdocfile_model',NOW());
 
 -- end of file

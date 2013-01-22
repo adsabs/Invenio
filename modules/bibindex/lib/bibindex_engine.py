@@ -37,7 +37,6 @@ from invenio.config import \
      CFG_BIBINDEX_AUTHOR_WORD_INDEX_EXCLUDE_FIRST_NAMES, \
      CFG_BIBINDEX_SYNONYM_KBRS, \
      CFG_CERN_SITE, CFG_INSPIRE_SITE, \
-     CFG_BIBINDEX_PERFORM_OCR_ON_DOCNAMES, \
      CFG_BIBINDEX_SPLASH_PAGES, \
      CFG_SOLR_URL, \
      CFG_XAPIAN_ENABLED
@@ -50,8 +49,9 @@ from invenio.bibindex_engine_tokenizer import \
      BibIndexPhraseTokenizer
 from invenio.bibindexadminlib import get_idx_indexer
 from invenio.bibdocfile import bibdocfile_url_p, \
-     bibdocfile_url_to_bibdoc, \
-     download_url, BibRecDocs
+     bibdocfile_url_to_bibdoc, normalize_format, \
+     download_url, guess_format_from_url, BibRecDocs, \
+     decompose_bibdocfile_url
 from invenio.websubmit_file_converter import convert_file, get_file_converter_logger
 from invenio.search_engine import perform_request_search, \
      get_index_stemming_language, \
@@ -60,7 +60,7 @@ from invenio.dbquery import run_sql, DatabaseError, serialize_via_marshal, \
      deserialize_via_marshal, wash_table_column_name
 from invenio.bibindex_engine_washer import wash_index_term
 from invenio.bibtask import task_init, write_message, get_datetime, \
-    task_set_option, task_get_option, task_get_task_param, task_update_status, \
+    task_set_option, task_get_option, task_get_task_param, \
     task_update_progress, task_sleep_now_if_required
 from invenio.intbitset import intbitset
 from invenio.errorlib import register_exception
@@ -283,28 +283,24 @@ def get_words_from_fulltext(url_direct_or_indirect, stemming_language=None):
        to fulltext documents, for all knows file extensions as
        specified by global CONV_PROGRAMS config variable.
     """
-    re_perform_ocr = re.compile(CFG_BIBINDEX_PERFORM_OCR_ON_DOCNAMES)
     write_message("... reading fulltext files from %s started" % url_direct_or_indirect, verbose=2)
     try:
         if bibdocfile_url_p(url_direct_or_indirect):
             write_message("... %s is an internal document" % url_direct_or_indirect, verbose=2)
             bibdoc = bibdocfile_url_to_bibdoc(url_direct_or_indirect)
-            perform_ocr = bool(re_perform_ocr.match(bibdoc.get_docname()))
-            write_message("... will extract words from %s (docid: %s) %s" % (bibdoc.get_docname(), bibdoc.get_id(), perform_ocr and 'with OCR' or ''), verbose=2)
-            if not bibdoc.has_text(require_up_to_date=True):
-                bibdoc.extract_text(perform_ocr=perform_ocr)
-
             indexer = get_idx_indexer('fulltext')
             if indexer != 'native':
-                recid = bibdoc.recid
-                # Adds fulltexts of all files once per records
-                if not recid in fulltext_added:
-                    bibrecdocs = BibRecDocs(recid)
-                    text = bibrecdocs.get_text()
-                    if indexer == 'SOLR' and CFG_SOLR_URL:
-                        solr_add_fulltext(recid, text)
-                    elif indexer == 'XAPIAN' and CFG_XAPIAN_ENABLED:
-                        xapian_add(recid, 'fulltext', text)
+                # A document might belong to multiple records
+                for rec_link in bibdoc.bibrec_links:
+                    recid = rec_link["recid"]
+                    # Adds fulltexts of all files once per records
+                    if not recid in fulltext_added:
+                        bibrecdocs = BibRecDocs(recid)
+                        text = bibrecdocs.get_text()
+                        if indexer == 'SOLR' and CFG_SOLR_URL:
+                            solr_add_fulltext(recid, text)
+                        elif indexer == 'XAPIAN' and CFG_XAPIAN_ENABLED:
+                            xapian_add(recid, 'fulltext', text)
 
                     fulltext_added.add(recid)
                 # we are relying on an external information retrieval system
@@ -312,7 +308,10 @@ def get_words_from_fulltext(url_direct_or_indirect, stemming_language=None):
                 # return nothing here:
                 return []
             else:
-                return get_words_from_phrase(bibdoc.get_text(), stemming_language)
+                text = ""
+                if hasattr(bibdoc, "get_text"):
+                    text = bibdoc.get_text()
+                return get_words_from_phrase(text, stemming_language)
         else:
             if CFG_BIBINDEX_FULLTEXT_INDEX_LOCAL_FILES_ONLY:
                 write_message("... %s is external URL but indexing only local files" % url_direct_or_indirect, verbose=2)
@@ -898,16 +897,14 @@ class WordTable:
                 # calculate chunk group of recIDs and treat it:
                 i_high = min(i_low + opt_flush - flush_count - 1, arange[1])
                 i_high = min(i_low + chunksize - chunksize_count - 1, i_high)
+
                 try:
                     self.chk_recID_range(i_low, i_high)
-                except StandardError, e:
-                    write_message("Exception caught: %s" % e, sys.stderr)
-                    register_exception(alert_admin=True)
-                    task_update_status("ERROR")
-                    self.put_into_db()
+                except StandardError:
                     if self.index_name == 'fulltext' and CFG_SOLR_URL:
                         solr_commit()
-                    sys.exit(1)
+                    raise
+
                 write_message("%s adding records #%d-#%d started" % \
                         (self.tablename, i_low, i_high))
                 if CFG_CHECK_MYSQL_THREADS:
@@ -1222,14 +1219,7 @@ class WordTable:
                 i_high = min(i_low + opt_flush - flush_count - 1, arange[1])
                 i_high = min(i_low + chunksize - chunksize_count - 1, i_high)
 
-                try:
-                    self.fix_recID_range(i_low, i_high)
-                except StandardError, e:
-                    write_message("Exception caught: %s" % e, sys.stderr)
-                    register_exception(alert_admin=True)
-                    task_update_status("ERROR")
-                    self.put_into_db()
-                    sys.exit(1)
+                self.fix_recID_range(i_low, i_high)
 
                 flush_count = flush_count + i_high - i_low + 1
                 chunksize_count = chunksize_count + i_high - i_low + 1
@@ -1265,7 +1255,7 @@ class WordTable:
                 "%s - %sR tables.\nRunning 'bibindex --repair' is " \
                 "recommended." % (self.tablename, self.tablename[:-1])
         write_message("EMERGENCY: " + error_message, stream=sys.stderr)
-        raise StandardError, error_message
+        raise StandardError(error_message)
 
     def fix_recID_range(self, low, high):
         """Try to fix reverse index database consistency (e.g. table idxWORD01R) in the low,high doc-id range.
@@ -1336,7 +1326,7 @@ class WordTable:
                     "recommended; see the BibIndex Admin Guide." % \
                     (self.tablename, self.tablename[:-1])
             write_message("EMERGENCY: " + error_message, stream=sys.stderr)
-            raise StandardError, error_message
+            raise StandardError(error_message)
 
 def main():
     """Main that construct all the bibtask."""
@@ -1403,7 +1393,7 @@ def task_submit_elaborate_specific_parameter(key, value, opts, args):
     if key in ("-a", "--add"):
         task_set_option("cmd", "add")
         if ("-x", "") in opts or ("--del", "") in opts:
-            raise StandardError, "Can not have --add and --del at the same time!"
+            raise StandardError("Can not have --add and --del at the same time!")
     elif key in ("-k", "--check"):
         task_set_option("cmd", "check")
     elif key in ("-r", "--repair"):
@@ -1423,8 +1413,8 @@ def task_submit_elaborate_specific_parameter(key, value, opts, args):
     elif key in ("-M", "--maxmem"):
         task_set_option("maxmem", int(value))
         if task_get_option("maxmem") < base_process_size + 1000:
-            raise StandardError, "Memory usage should be higher than %d kB" % \
-                (base_process_size + 1000)
+            raise StandardError("Memory usage should be higher than %d kB" % \
+                (base_process_size + 1000))
     elif key in ("-f", "--flush"):
         task_set_option("flush", int(value))
     else:
@@ -1543,7 +1533,7 @@ def task_run_core():
                     error_message = "Missing IDs of records to delete from " \
                             "index %s." % wordTable.tablename
                     write_message(error_message, stream=sys.stderr)
-                    raise StandardError, error_message
+                    raise StandardError(error_message)
             elif task_get_option("cmd") == "add":
                 if task_get_option("id"):
                     wordTable.add_recIDs(task_get_option("id"), task_get_option("flush"))
@@ -1568,14 +1558,13 @@ def task_run_core():
                 error_message = "Invalid command found processing %s" % \
                     wordTable.tablename
                 write_message(error_message, stream=sys.stderr)
-                raise StandardError, error_message
+                raise StandardError(error_message)
         except StandardError, e:
             write_message("Exception caught: %s" % e, sys.stderr)
             register_exception(alert_admin=True)
-            task_update_status("ERROR")
             if _last_word_table:
                 _last_word_table.put_into_db()
-            sys.exit(1)
+            raise
 
         wordTable.report_on_table_consistency()
         task_sleep_now_if_required(can_stop_too=True)
@@ -1612,7 +1601,7 @@ def task_run_core():
                     error_message = "Missing IDs of records to delete from " \
                             "index %s." % wordTable.tablename
                     write_message(error_message, stream=sys.stderr)
-                    raise StandardError, error_message
+                    raise StandardError(error_message)
             elif task_get_option("cmd") == "add":
                 if task_get_option("id"):
                     wordTable.add_recIDs(task_get_option("id"), task_get_option("flush"))
@@ -1636,14 +1625,13 @@ def task_run_core():
                 error_message = "Invalid command found processing %s" % \
                         wordTable.tablename
                 write_message(error_message, stream=sys.stderr)
-                raise StandardError, error_message
+                raise StandardError(error_message)
         except StandardError, e:
             write_message("Exception caught: %s" % e, sys.stderr)
             register_exception()
-            task_update_status("ERROR")
             if _last_word_table:
                 _last_word_table.put_into_db()
-            sys.exit(1)
+            raise
 
         wordTable.report_on_table_consistency()
         task_sleep_now_if_required(can_stop_too=True)
@@ -1681,7 +1669,7 @@ def task_run_core():
                     error_message = "Missing IDs of records to delete from " \
                             "index %s." % wordTable.tablename
                     write_message(error_message, stream=sys.stderr)
-                    raise StandardError, error_message
+                    raise StandardError(error_message)
             elif task_get_option("cmd") == "add":
                 if task_get_option("id"):
                     wordTable.add_recIDs(task_get_option("id"), task_get_option("flush"))
@@ -1706,14 +1694,13 @@ def task_run_core():
                 error_message = "Invalid command found processing %s" % \
                         wordTable.tablename
                 write_message(error_message, stream=sys.stderr)
-                raise StandardError, error_message
+                raise StandardError(error_message)
         except StandardError, e:
             write_message("Exception caught: %s" % e, sys.stderr)
             register_exception()
-            task_update_status("ERROR")
             if _last_word_table:
                 _last_word_table.put_into_db()
-            sys.exit(1)
+            raise
 
         wordTable.report_on_table_consistency()
         task_sleep_now_if_required(can_stop_too=True)

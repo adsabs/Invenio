@@ -82,6 +82,9 @@ CFG_MAX_ATIME_RM_WEBJOURNAL_XML = 7
 # After how many days to remove obsolete temporary files attached with
 # the CKEditor in WebSubmit context?
 CFG_MAX_ATIME_RM_WEBSUBMIT_CKEDITOR_FILE = 28
+# After how many days to remove obsolete temporary files related to BibEdit
+# cache
+CFG_MAX_ATIME_BIBEDIT_TMP = 3
 
 def gc_exec_command(command):
     """ Exec the command logging in appropriate way its output."""
@@ -166,9 +169,9 @@ def clean_tempfiles():
 
     write_message("- deleting temporary old "
             "RefExtract files")
-    gc_exec_command('find %s %s -name "refextract_task_*"'
+    gc_exec_command('find %s %s -name "refextract*"'
         ' -atime +%s -exec rm %s -f {} \;' \
-            % (CFG_TMPDIR, CFG_TMPSHAREDDIR, \
+            % (CFG_TMPDIR, CFG_TMPSHAREDDIR,
                CFG_MAX_ATIME_RM_REFEXTRACT, vstr))
 
     write_message("- deleting temporary old bibdocfiles")
@@ -199,6 +202,12 @@ def clean_tempfiles():
     gc_exec_command('find %s/var/tmp/attachfile/ '
         ' -atime +%s -exec rm %s -f {} \;' \
             % (CFG_PREFIX, CFG_MAX_ATIME_RM_WEBSUBMIT_CKEDITOR_FILE,
+               vstr))
+
+    write_message("- deleting old temporary files attached with BibEdit")
+    gc_exec_command('find %s -name "bibedit*.tmp"'
+        ' -atime +%s -exec rm %s -f {} \;' \
+            % (CFG_TMPSHAREDDIR, CFG_MAX_ATIME_BIBEDIT_TMP,
                vstr))
 
     write_message("""CLEANING OF TMP FILES FINISHED""")
@@ -283,7 +292,7 @@ def clean_documents():
     write_message("select id from bibdoc where status='DELETED' and NOW()>ADDTIME(modification_date, '%s 0:0:0')" % CFG_DELETED_BIBDOC_MAXLIFE, verbose=9)
     records = run_sql("select id from bibdoc where status='DELETED' and NOW()>ADDTIME(modification_date, '%s 0:0:0')", (CFG_DELETED_BIBDOC_MAXLIFE,))
     for record in records:
-        bibdoc = BibDoc(record[0])
+        bibdoc = BibDoc.create_instance(record[0])
         bibdoc.expunge()
         write_message("DELETE FROM bibdoc WHERE id=%i" % int(record[0]), verbose=9)
         run_sql("DELETE FROM bibdoc WHERE id=%s", (record[0],))

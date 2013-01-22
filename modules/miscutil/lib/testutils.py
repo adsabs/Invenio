@@ -30,6 +30,7 @@ import sys
 import time
 import unittest
 import cgi
+import subprocess
 
 from warnings import warn
 from urlparse import urlsplit, urlunsplit
@@ -44,7 +45,8 @@ except ImportError:
     pass
 
 from invenio.config import CFG_SITE_URL, \
-     CFG_SITE_SECURE_URL, CFG_LOGDIR, CFG_SITE_NAME_INTL, CFG_PYLIBDIR
+     CFG_SITE_SECURE_URL, CFG_LOGDIR, CFG_SITE_NAME_INTL, CFG_PYLIBDIR, \
+     CFG_JSTESTDRIVER_PORT, CFG_WEBDIR, CFG_PREFIX
 from invenio.w3c_validator import w3c_validate, w3c_errors_to_str, \
      CFG_TESTS_REQUIRE_HTML_VALIDATION
 from invenio.pluginutils import PluginContainer
@@ -159,6 +161,31 @@ def test_web_page_existence(url):
         raise
     return True
 
+def get_authenticated_mechanize_browser(username="guest", password=""):
+    """
+    Return an instance of a mechanize browser already authenticated
+    to Invenio
+    """
+    try:
+        import mechanize
+    except ImportError:
+        raise InvenioTestUtilsBrowserException('ERROR: Cannot import mechanize.')
+    browser = mechanize.Browser()
+    browser.set_handle_robots(False) # ignore robots.txt, since we test gently
+    if username == "guest":
+        return browser
+    browser.open(CFG_SITE_SECURE_URL + "/youraccount/login")
+    browser.select_form(nr=0)
+    browser['p_un'] = username
+    browser['p_pw'] = password
+    browser.submit()
+    username_account_page_body = browser.response().read()
+    try:
+        username_account_page_body.index("You are logged in as %s." % username)
+    except ValueError:
+        raise InvenioTestUtilsBrowserException('ERROR: Cannot login as %s.' % username)
+    return browser
+
 def test_web_page_content(url,
                           username="guest",
                           password="",
@@ -186,36 +213,17 @@ def test_web_page_content(url,
        messages that may have been encountered during processing of
        page.
     """
-
+    try:
+        import mechanize
+    except ImportError:
+        raise InvenioTestUtilsBrowserException('ERROR: Cannot import mechanize.')
     if '--w3c-validate' in sys.argv:
         require_validate_p = True
         sys.stderr.write('Required validation\n')
 
     error_messages = []
     try:
-        import mechanize
-    except ImportError:
-        return ['ERROR: Cannot import mechanize.']
-    browser = mechanize.Browser()
-    browser.set_handle_robots(False) # ignore robots.txt, since we test gently
-    try:
-        # firstly login:
-        if username == "guest":
-            pass
-        else:
-            browser.open(CFG_SITE_SECURE_URL + "/youraccount/login")
-            browser.select_form(nr=0)
-            browser['p_un'] = username
-            browser['p_pw'] = password
-            browser.submit()
-            username_account_page_body = browser.response().read()
-            try:
-                username_account_page_body.index("You are logged in as %s." % username)
-            except ValueError:
-                raise InvenioTestUtilsBrowserException, \
-                      'ERROR: Cannot login as %s.' % username
-
-        # secondly read page body:
+        browser = get_authenticated_mechanize_browser(username, password)
         browser.open(url)
         url_body = browser.response().read()
 
@@ -298,10 +306,13 @@ def test_web_page_content(url,
         error_messages.append('ERROR: Page %s (login %s) led to an error: %s.' % \
                               (url, username, msg))
 
-    # logout after tests:
-    browser.open(CFG_SITE_SECURE_URL + "/youraccount/logout")
-    browser.response().read()
-    browser.close()
+    try:
+        # logout after tests:
+        browser.open(CFG_SITE_SECURE_URL + "/youraccount/logout")
+        browser.response().read()
+        browser.close()
+    except UnboundLocalError:
+        pass
 
     if CFG_TESTUTILS_VERBOSE >= 9:
         print "%s test_web_page_content(), tested page `%s', login `%s', expected text `%s', errors `%s'." % \
@@ -342,6 +353,79 @@ def build_and_run_unit_test_suite():
     complete_suite = unittest.TestSuite(test_modules)
     res = unittest.TextTestRunner(verbosity=2).run(complete_suite)
     return res.wasSuccessful()
+
+def build_and_run_js_unit_test_suite():
+    """
+    Init the JsTestDriver server, detect all Invenio JavaScript files with
+    names ending by '*_tests.js' and run them.
+    Called by 'inveniocfg --run-js-unit-tests'.
+    """
+    def _server_init(server_process):
+        """
+        Init JsTestDriver server and check if it succedeed
+        """
+        output_success = "Finished action run"
+        output_error = "Server failed"
+        read_timeout = 30
+
+        start_time = time.time()
+        elapsed_time = 0
+        while 1:
+            stdout_line = server_process.stdout.readline()
+            if output_success in stdout_line:
+                print '* JsTestDriver server ready\n'
+                return True
+            elif output_error in stdout_line or elapsed_time > read_timeout:
+                print '* ! JsTestDriver server init failed\n'
+                print server_process.stdout.read()
+                return False
+            elapsed_time = time.time() - start_time
+
+    def _find_and_run_js_test_files():
+        """
+        Find all JS files installed in Invenio lib directory and run
+        them on the JsTestDriver server
+        """
+        from invenio.shellutils import run_shell_command
+        errors_found = 0
+        for candidate in os.listdir(CFG_WEBDIR + "/js"):
+            base, ext = os.path.splitext(candidate)
+
+            if ext != '.js' or not base.endswith('_tests'):
+                continue
+
+            print "Found test file %s. Running tests... " % (base + ext)
+            dummy_current_exitcode, cmd_stdout, dummy_err_msg = run_shell_command(cmd="java -jar %s/JsTestDriver.jar --config %s --tests all" % \
+                                                                                  (CFG_PREFIX + "/lib/java/js-test-driver", CFG_WEBDIR + "/js/" + base + '.conf'))
+            print cmd_stdout
+            if "Fails: 0" not in cmd_stdout:
+                errors_found += 1
+        print errors_found
+        return errors_found
+
+    print "Going to start JsTestDriver server..."
+    server_process = subprocess.Popen(["java", "-jar",
+        "%s/JsTestDriver.jar" % (CFG_PREFIX + "/lib/java/js-test-driver"), "--runnerMode", "INFO",
+        "--port", "%d" % CFG_JSTESTDRIVER_PORT],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+
+    try:
+        if not _server_init(server_process):
+            # There was an error initialising server
+            return 1
+
+        print "Now you can capture the browsers where you would " \
+              "like to run the tests by opening the following url:\n" \
+              "%s:%d/capture \n" % (CFG_SITE_URL, CFG_JSTESTDRIVER_PORT)
+
+        print "Press enter when you are ready to run tests"
+        raw_input()
+
+        exitcode = _find_and_run_js_test_files()
+    finally:
+        server_process.kill()
+
+    return exitcode
 
 def build_and_run_regression_test_suite():
     """
@@ -548,7 +632,7 @@ class InvenioWebTestCase(unittest.TestCase):
         except:
             raise InvenioWebTestCaseException(element="page source")
 
-    def login(self, username="guest", password="", force_ln='en'):
+    def login(self, username="guest", password="", force_ln='en', go_to_login_page=True):
         """ Login function
         @param username: the username (nickname or email)
         @type username: string
@@ -557,14 +641,19 @@ class InvenioWebTestCase(unittest.TestCase):
         @param force_ln: if the arrival page doesn't use the corresponding
             language, then the browser will redirect to it.
         @type force_ln: string
+        @param go_to_login_page: if True, look for login link on the
+                                 page. Otherwise expect to be already
+                                 on a page with the login form
+        @type go_to_login_page: bool
         """
-        if not "You can use your nickname or your email address to login." in self.browser.page_source:
-            if "You are no longer recognized by our system" in self.browser.page_source:
-                self.find_element_by_link_text_with_timeout("login here")
-                self.browser.find_element_by_link_text("login here").click()
-            else:
-                self.find_element_by_link_text_with_timeout("login")
-                self.browser.find_element_by_link_text("login").click()
+        if go_to_login_page:
+            if not "You can use your nickname or your email address to login." in self.browser.page_source:
+                if "You are no longer recognized by our system" in self.browser.page_source:
+                    self.find_element_by_link_text_with_timeout("login here")
+                    self.browser.find_element_by_link_text("login here").click()
+                else:
+                    self.find_element_by_link_text_with_timeout("login")
+                    self.browser.find_element_by_link_text("login").click()
 
         self.find_element_by_name_with_timeout("p_un")
         self.browser.find_element_by_name("p_un").clear()

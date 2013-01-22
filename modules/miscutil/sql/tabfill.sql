@@ -55,6 +55,7 @@ INSERT INTO field VALUES (27,'caption','caption');
 INSERT INTO field VALUES (28,'first author','firstauthor');
 INSERT INTO field VALUES (29,'exact first author','exactfirstauthor');
 INSERT INTO field VALUES (30,'author count','authorcount');
+INSERT INTO field VALUES (31,'reference to','rawref');
 
 INSERT INTO field_tag VALUES (1,100,10);
 INSERT INTO field_tag VALUES (1,102,10);
@@ -221,6 +222,7 @@ INSERT INTO format (id,name,code,description,content_type,visibility) VALUES (21
 INSERT INTO format (id,name,code,description,content_type,visibility) VALUES (22,'Podcast', 'xp', 'Sample format suitable for multimedia feeds, such as podcasts', 'application/rss+xml', 0);
 INSERT INTO format (id,name,code,description,content_type,visibility) VALUES (23,'WebAuthorProfile affiliations helper','wapaff', 'cPickled dicts', 'text', 0);
 INSERT INTO format (id,name,code,description,content_type,visibility) VALUES (24,'EndNote (8-X)','xe8x', 'XML EndNote (8-X).', 'text/xml', 1);
+INSERT INTO format (id,name,code,description,content_type,visibility) VALUES (25,'HTML citesummary extended','hcs2', 'HTML cite summary format, including self-citations counts.', 'text/html', 0);
 
 INSERT INTO tag VALUES (1,'first author name','100__a');
 INSERT INTO tag VALUES (2,'additional author name','700__a');

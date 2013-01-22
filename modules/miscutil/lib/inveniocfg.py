@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 ##
 ## This file is part of Invenio.
-## Copyright (C) 2008, 2009, 2010, 2011, 2012 CERN.
+## Copyright (C) 2008, 2009, 2010, 2011, 2012, 2013 CERN.
 ##
 ## Invenio is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
@@ -174,7 +174,8 @@ Please, update your invenio-local.conf file accordingly.""" % (option_name, new_
                        'CFG_WEB_API_KEY_ALLOWED_URL',
                        'CFG_BIBDOCFILE_DOCUMENT_FILE_MANAGER_MISC',
                        'CFG_BIBDOCFILE_DOCUMENT_FILE_MANAGER_DOCTYPES',
-                       'CFG_BIBDOCFILE_DOCUMENT_FILE_MANAGER_RESTRICTIONS']:
+                       'CFG_BIBDOCFILE_DOCUMENT_FILE_MANAGER_RESTRICTIONS',
+                       'CFG_REFEXTRACT_KBS_OVERRIDE']:
         try:
             option_value = option_value[1:-1]
         except TypeError:
@@ -222,6 +223,7 @@ You may want to customise your invenio-local.conf configuration accordingly."""
         out = "["
         for elem in option_value[1:-1].split(","):
             if elem:
+                elem = elem.strip()
                 if option_name in ['CFG_WEBSEARCH_ENABLED_SEARCH_INTERFACES']:
                     # 3d1) integer values
                     out += "%i, " % int(elem)
@@ -311,7 +313,7 @@ def cli_cmd_update_config_py(conf):
         options = conf.options(section)
         options.sort()
         for option in options:
-            if not option.startswith('CFG_DATABASE_'):
+            if not option.upper().startswith('CFG_DATABASE_'):
                 # put all options except for db credentials into config.py
                 line_out = convert_conf_option(option, conf.get(section, option))
                 if line_out:
@@ -337,24 +339,21 @@ def cli_cmd_update_dbquery_py(conf):
     """
     print ">>> Going to update dbquery.py..."
     ## location where dbquery.py is:
-    dbquerypyfile = conf.get("Invenio", "CFG_PYLIBDIR") + \
-                    os.sep + 'invenio' + os.sep + 'dbquery.py'
+    dbqueryconfigpyfile = conf.get("Invenio", "CFG_PYLIBDIR") + \
+                    os.sep + 'invenio' + os.sep + 'dbquery_config.py'
     ## backup current dbquery.py file:
-    if os.path.exists(dbquerypyfile):
-        shutil.copy(dbquerypyfile, dbquerypyfile + '.OLD')
-    ## replace db parameters:
-    out = ''
-    for line in open(dbquerypyfile, 'r').readlines():
-        match = re.search(r'^CFG_DATABASE_(HOST|PORT|NAME|USER|PASS|SLAVE)(\s*=\s*)\'.*\'$', line)
-        if match:
-            dbparam = 'CFG_DATABASE_' + match.group(1)
-            out += "%s%s'%s'\n" % (dbparam, match.group(2),
-                                   conf.get('Invenio', dbparam))
-        else:
-            out += line
-    fdesc = open(dbquerypyfile, 'w')
-    fdesc.write(out)
+    if os.path.exists(dbqueryconfigpyfile + 'c'):
+        shutil.copy(dbqueryconfigpyfile + 'c', dbqueryconfigpyfile + 'c.OLD')
+
+    out = ["%s = '%s'\n" % (item.upper(), value) \
+                        for item, value in conf.items('Invenio') \
+                        if item.upper().startswith('CFG_DATABASE_')]
+
+    fdesc = open(dbqueryconfigpyfile, 'w')
+    fdesc.write("# -*- coding: utf-8 -*-\n")
+    fdesc.writelines(out)
     fdesc.close()
+
     print "You may want to restart Apache now."
     print ">>> dbquery.py updated successfully."
 
@@ -829,6 +828,12 @@ def cli_cmd_run_unit_tests(conf):
     """Run unit tests, usually on the working demo site."""
     from invenio.testutils import build_and_run_unit_test_suite
     if not build_and_run_unit_test_suite():
+        sys.exit(1)
+
+def cli_cmd_run_js_unit_tests(conf):
+    """Run JavaScript unit tests, usually on the working demo site."""
+    from invenio.testutils import build_and_run_js_unit_test_suite
+    if not build_and_run_js_unit_test_suite():
         sys.exit(1)
 
 def cli_cmd_run_regression_tests(conf):
@@ -1403,6 +1408,7 @@ def prepare_option_parser():
     demotest_options.add_option("", "--remove-demo-records", dest='actions', const='remove-demo-records', action="append_const", help="remove demo records, keeping demo site")
     demotest_options.add_option("", "--drop-demo-site", dest='actions', const='drop-demo-site', action="append_const", help="drop demo site configurations too")
     demotest_options.add_option("", "--run-unit-tests", dest='actions', const='run-unit-tests', action="append_const", help="run unit test suite (needs demo site)")
+    demotest_options.add_option("", "--run-js-unit-tests", dest='actions', const='run-js-unit-tests', action="append_const", help="run JS unit test suite (needs demo site)")
     demotest_options.add_option("", "--run-regression-tests", dest='actions', const='run-regression-tests', action="append_const", help="run regression test suite (needs demo site)")
     demotest_options.add_option("", "--run-web-tests", dest='actions', const='run-web-tests', action="append_const", help="run web tests in a browser (needs demo site, Firefox, Selenium IDE)")
     parser.add_option_group(demotest_options)
@@ -1524,6 +1530,8 @@ def main(*cmd_args):
                 cli_cmd_drop_demo_site(conf)
             elif action == 'run-unit-tests':
                 cli_cmd_run_unit_tests(conf)
+            elif action == 'run-js-unit-tests':
+                cli_cmd_run_js_unit_tests(conf)
             elif action == 'run-regression-tests':
                 cli_cmd_run_regression_tests(conf)
             elif action == 'run-web-tests':

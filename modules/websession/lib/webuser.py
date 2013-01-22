@@ -243,6 +243,7 @@ def setUid(req, uid, remember_me=False):
         user_info = collect_user_info(req, login_time=True)
         session['user_info'] = user_info
         req._user_info = user_info
+        session.save()
     else:
         del session['user_info']
     return uid
@@ -524,8 +525,11 @@ def merge_usera_into_userb(id_usera, id_userb):
     preferencea.update(preferenceb)
     set_user_preferences(id_userb, preferencea)
     try:
-        for table, dummy in CFG_WEBUSER_USER_TABLES:
-            run_sql("LOCK TABLE %s WRITE" % table)
+        ## FIXME: for the time being, let's disable locking
+        ## until we will move to InnoDB and we will have
+        ## real transitions
+        #for table, dummy in CFG_WEBUSER_USER_TABLES:
+            #run_sql("LOCK TABLE %s WRITE" % table)
         index = 0
         table = ''
         try:
@@ -541,7 +545,9 @@ def merge_usera_into_userb(id_usera, id_userb):
             register_exception(alert_admin=True, prefix=msg)
             raise
     finally:
-        run_sql("UNLOCK TABLES")
+        ## FIXME: locking disabled
+        #run_sql("UNLOCK TABLES")
+        pass
 
 def loginUser(req, p_un, p_pw, login_method):
     """It is a first simple version for the authentication of user. It returns the id of the user,
@@ -581,7 +587,7 @@ def loginUser(req, p_un, p_pw, login_method):
             if res:
                 ## User was already registered with this external method.
                 id_user = res[0][0]
-                old_email = run_sql("SELECT email FROM user WHERE id=%s", (id_user,))[0][0]
+                old_email = run_sql("SELECT email FROM user WHERE id=%s", (id_user,))[0][0].lower()
                 if old_email != p_email:
                     ## User has changed email of reference.
                     res = run_sql("SELECT id FROM user WHERE email=%s", (p_email,))
@@ -589,6 +595,8 @@ def loginUser(req, p_un, p_pw, login_method):
                         ## User was also registered with the other email.
                         ## We should merge the two!
                         new_id = res[0][0]
+                        if new_id == id_user:
+                            raise AssertionError("We should not reach this situation: new_id=%s, id_user=%s, old_email=%s, p_email=%s" % (new_id, id_user, old_email, p_email))
                         merge_usera_into_userb(id_user, new_id)
                         run_sql("DELETE FROM user WHERE id=%s", (id_user, ))
                         for row in run_sql("SELECT method FROM userEXT WHERE id_user=%s", (id_user, )):
@@ -737,6 +745,7 @@ def logoutUser(req):
         uid = createGuestUser()
         session['uid'] = uid
         session.set_remember_me(False)
+        session.save()
     else:
         uid = 0
         session.invalidate()
@@ -864,8 +873,7 @@ def create_userinfobox_body(req, uid, language="en"):
     """Create user info box body for user UID in language LANGUAGE."""
 
     if req:
-        if req.subprocess_env.has_key('HTTPS') \
-           and req.subprocess_env['HTTPS'] == 'on':
+        if req.is_https():
             url_referer = CFG_SITE_SECURE_URL + req.unparsed_uri
         else:
             url_referer = CFG_SITE_URL + req.unparsed_uri
@@ -909,8 +917,7 @@ def create_useractivities_menu(req, uid, navmenuid, ln="en"):
     """
 
     if req:
-        if req.subprocess_env.has_key('HTTPS') \
-           and req.subprocess_env['HTTPS'] == 'on':
+        if req.is_https():
             url_referer = CFG_SITE_SECURE_URL + req.unparsed_uri
         else:
             url_referer = CFG_SITE_URL + req.unparsed_uri
@@ -942,7 +949,8 @@ def create_useractivities_menu(req, uid, navmenuid, ln="en"):
             usealerts=user_info['precached_usealerts'],
             usegroups=user_info['precached_usegroups'],
             useloans=user_info['precached_useloans'],
-            usestats=user_info['precached_usestats']
+            usestats=user_info['precached_usestats'],
+            usecomments=user_info['precached_sendcomments'],
             )
     except OperationalError:
         return ""
@@ -962,8 +970,7 @@ def create_adminactivities_menu(req, uid, navmenuid, ln="en"):
     """
     _ = gettext_set_language(ln)
     if req:
-        if req.subprocess_env.has_key('HTTPS') \
-           and req.subprocess_env['HTTPS'] == 'on':
+        if req.is_https():
             url_referer = CFG_SITE_SECURE_URL + req.unparsed_uri
         else:
             url_referer = CFG_SITE_URL + req.unparsed_uri
@@ -1180,6 +1187,7 @@ def collect_user_info(req, login_time=False, refresh=False):
         'precached_usepaperclaim' : False,
         'precached_usepaperattribution' : False,
         'precached_canseehiddenmarctags' : False,
+        'precached_sendcomments' : False,
     }
 
     try:
@@ -1310,6 +1318,7 @@ def collect_user_info(req, login_time=False, refresh=False):
                 user_info['precached_useapprove'] = isUserReferee(user_info)
                 user_info['precached_useadmin'] = isUserAdmin(user_info)
                 user_info['precached_canseehiddenmarctags'] = acc_authorize_action(user_info, 'runbibedit')[0] == 0
+                user_info['precached_sendcomments'] = acc_authorize_action(user_info, 'sendcomment', '*')[0] == 0
                 usepaperclaim = False
                 usepaperattribution = False
                 viewclaimlink = False

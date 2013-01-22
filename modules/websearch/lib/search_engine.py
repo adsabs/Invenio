@@ -336,9 +336,6 @@ def check_user_can_view_record(user_info, recid):
     policy = CFG_WEBSEARCH_VIEWRESTRCOLL_POLICY.strip().upper()
     if isinstance(recid, str):
         recid = int(recid)
-    if record_public_p(recid):
-        ## The record is already known to be public.
-        return (0, '')
     ## At this point, either webcoll has not yet run or there are some
     ## restricted collections. Let's see first if the user own the record.
     if is_user_owner_of_record(user_info, recid):
@@ -350,10 +347,13 @@ def check_user_can_view_record(user_info, recid):
         return (0, '')
 
     restricted_collections = get_restricted_collections_for_recid(recid, recreate_cache_if_needed=False)
+    if not restricted_collections and record_public_p(recid):
+        ## The record is public and not part of any restricted collection
+        return (0, '')
     if restricted_collections:
         ## If there are restricted collections the user must be authorized to all/any of them (depending on the policy)
         auth_code, auth_msg = 0, ''
-        for collection in get_restricted_collections_for_recid(recid, recreate_cache_if_needed=False):
+        for collection in restricted_collections:
             (auth_code, auth_msg) = acc_authorize_action(user_info, VIEWRESTRCOLL, collection=collection)
             if auth_code and policy != 'ANY':
                 ## Ouch! the user is not authorized to this collection
@@ -876,7 +876,7 @@ def page_start(req, of, cc, aas, ln, uid, title_message=None,
             req.write("""<?xml version="1.0" encoding="UTF-8"?>\n""")
         else:
             # we are doing XML output:
-            req.content_type = "text/xml"
+            req.content_type = get_output_format_content_type(of, 'text/xml')
             req.send_http_header()
             req.write("""<?xml version="1.0" encoding="UTF-8"?>\n""")
     elif of.startswith('t') or str(of[0:3]).isdigit():
@@ -974,8 +974,9 @@ def page_start(req, of, cc, aas, ln, uid, title_message=None,
                                  rssurl=rssurl,
                                  body_css_classes=body_css_classes))
         req.write(websearch_templates.tmpl_search_pagestart(ln=ln))
-    #else:
-    #    req.send_http_header()
+    else:
+        req.content_type = content_type
+        req.send_http_header()
 
 def page_end(req, of="hb", ln=CFG_SITE_LANG, em=""):
     "End page according to given output format: e.g. close XML tags, add HTML footer, etc."
@@ -2237,6 +2238,10 @@ def search_unit(p, f=None, m=None, wl=0):
     elif f == 'refersto':
         # we are doing search by the citation count
         hitset = search_unit_refersto(p)
+    elif f == 'rawref':
+        from invenio.refextract_api import search_from_reference
+        field, pattern = search_from_reference(p)
+        return search_unit(pattern, field)
     elif f == 'citedby':
         # we are doing search by the citation count
         hitset = search_unit_citedby(p)
@@ -2685,7 +2690,7 @@ def search_unit_in_bibrec(datetext1, datetext2, type='c'):
     to intersect later on with the 'real' query.
     """
     set = intbitset()
-    if type.startswith("m"):
+    if type and type.startswith("m"):
         type = "modification_date"
     else:
         type = "creation_date" # by default we are searching for creation dates
@@ -2871,7 +2876,7 @@ def intersect_results_with_hitset(req, results, hitset, ap=0, aptext="", of="hb"
        'hitset' intersection to each collection within search
        'results'.
 
-       If the final 'results' set is to be empty, and 'ap'
+       If the final set is to be empty, and 'ap'
        (approximate pattern) is true, and then print the `warningtext'
        and return the original 'results' set unchanged.  If 'ap' is
        false, then return empty results set.
@@ -2881,14 +2886,15 @@ def intersect_results_with_hitset(req, results, hitset, ap=0, aptext="", of="hb"
     else:
         results_ap = {} # will return empty dict in case of no hits found
     nb_total = 0
+    final_results = {}
     for coll in results.keys():
-        results[coll].intersection_update(hitset)
-        nb_total += len(results[coll])
+        final_results[coll] = results[coll].intersection(hitset)
+        nb_total += len(final_results[coll])
     if nb_total == 0:
         if of.startswith("h"):
             write_warning(aptext, req=req)
-        results = results_ap
-    return results
+        final_results = results_ap
+    return final_results
 
 def create_similarly_named_authors_link_box(author_name, ln=CFG_SITE_LANG):
     """Return a box similar to ``Not satisfied...'' one by proposing
@@ -4231,7 +4237,7 @@ def print_records(req, recIDs, jrec=1, rg=CFG_WEBSEARCH_DEF_RECORDS_IN_GROUPS, f
                     req.write('\n')
         elif format == 'excel':
             recIDs_to_print = [recIDs[x] for x in range(irec_max, irec_min, -1)]
-            create_excel(recIDs=recIDs_to_print, req=req, ln=ln, ot=ot)
+            create_excel(recIDs=recIDs_to_print, req=req, ln=ln, ot=ot, user_info=user_info)
         else:
             # we are doing HTML output:
             if format == 'hp' or format.startswith("hb_") or format.startswith("hd_"):
@@ -5364,7 +5370,7 @@ def prs_search(kwargs=None, recid=0, req=None, cc=None, p=None, p1=None, p2=None
 
     # External searches
     if of.startswith("h"):
-        if not of in ['hcs']:
+        if not of in ['hcs', 'hcs2']:
             perform_external_collection_search_with_em(req, cc, [p, p1, p2, p3], f, ec, verbose,
                                                        ln, selected_external_collections_infos, em=em)
     return page_end(req, of, ln, em)
@@ -5751,15 +5757,13 @@ def prs_apply_search_limits(results_final, kwargs=None, req=None, of=None, cc=No
         if verbose and of.startswith("h"):
             write_warning("Search stage 5: applying time etc limits, from %s until %s..." % (datetext1, datetext2), req=req)
         try:
-            new_res = intersect_results_with_hitset(req,
-                                                    results_final,
-                                                    search_unit_in_bibrec(datetext1, datetext2, dt),
-                                                    ap,
-                                                    aptext= _("No match within your time limits, "
-                                                              "discarding this condition..."),
-                                                    of=of)
-            results_final.clear()
-            results_final.update(new_res)
+            results_final = intersect_results_with_hitset(req,
+                                                          results_final,
+                                                          search_unit_in_bibrec(datetext1, datetext2, dt),
+                                                          ap,
+                                                          aptext= _("No match within your time limits, "
+                                                                    "discarding this condition..."),
+                                                          of=of)
         except:
             register_exception(req=req, alert_admin=True)
             if of.startswith("h"):
@@ -5782,15 +5786,13 @@ def prs_apply_search_limits(results_final, kwargs=None, req=None, of=None, cc=No
         if verbose and of.startswith("h"):
             write_warning("Search stage 5: applying search pattern limit %s..." % cgi.escape(pl), req=req)
         try:
-            new_res = intersect_results_with_hitset(req,
-                                                    results_final,
-                                                    search_pattern_parenthesised(req, pl, ap=0, ln=ln, wl=wl),
-                                                    ap,
-                                                    aptext=_("No match within your search limits, "
-                                                            "discarding this condition..."),
-                                                    of=of)
-            results_final.clear()
-            results_final.update(new_res)
+            results_final = intersect_results_with_hitset(req,
+                                                          results_final,
+                                                          search_pattern_parenthesised(req, pl, ap=0, ln=ln, wl=wl),
+                                                          ap,
+                                                          aptext=_("No match within your search limits, "
+                                                                   "discarding this condition..."),
+                                                          of=of)
         except:
             register_exception(req=req, alert_admin=True)
             if of.startswith("h"):
@@ -5861,7 +5863,7 @@ def prs_split_into_collections(kwargs=None, results_final=None, colls_to_search=
 
 def prs_summarize_records(kwargs=None, req=None, p=None, f=None, aas=None,
                        p1=None, p2=None, p3=None, f1=None, f2=None, f3=None, op1=None, op2=None,
-                       ln=None, results_final_for_all_selected_colls=None, **dummy):
+                       ln=None, results_final_for_all_selected_colls=None, of='hcs', **dummy):
     # feed the current search to be summarized:
     from invenio.search_engine_summarizer import summarize_records
     search_p = p
@@ -5881,7 +5883,7 @@ def prs_summarize_records(kwargs=None, req=None, p=None, f=None, aas=None,
                 fi = fi + ':'
             search_p += fi + pi + op_d[oi]
         search_f = ''
-    summarize_records(results_final_for_all_selected_colls, 'hcs', ln, search_p, search_f, req)
+    summarize_records(results_final_for_all_selected_colls, of, ln, search_p, search_f, req)
 
 
 def prs_print_records(kwargs=None, results_final=None, req=None, of=None, cc=None, pl_in_url=None,
@@ -6034,7 +6036,7 @@ def prs_log_query(kwargs=None, req=None, uid=None, of=None, ln=None, p=None, f=N
     try:
         id_query = log_query(req.remote_host, req.args, uid)
         if of.startswith("h") and id_query and (em == '' or EM_REPOSITORY["alert"] in em):
-            if not of in ['hcs']:
+            if not of in ['hcs', 'hcs2']:
                 # display alert/RSS teaser for non-summary formats:
                 user_info = collect_user_info(req)
                 display_email_alert_part = True
@@ -6183,7 +6185,7 @@ def prs_display_results(kwargs=None, results_final=None, req=None, of=None, sf=N
             return recIDs
 
         elif of.startswith("h"):
-            if of not in ['hcs']:
+            if of not in ['hcs', 'hcs2']:
                 # added the hosted_colls_potential_results_p parameter to help print out the overview more accurately
                 req.write(print_results_overview(colls_to_search, results_final_nb_total, results_final_nb, cpu_time,
                             ln, ec, hosted_colls_potential_results_p=kwargs['hosted_colls_potential_results_p'], em=em))
@@ -6193,7 +6195,7 @@ def prs_display_results(kwargs=None, results_final=None, req=None, of=None, sf=N
         if of.startswith("x"):
             req.write("<!-- Search-Engine-Total-Number-Of-Results: %s -->\n" % kwargs['results_final_nb_total'])
         # print records:
-        if of in ['hcs']:
+        if of in ['hcs', 'hcs2']:
             prs_summarize_records(kwargs=kwargs, **kwargs)
         else:
             prs_print_records(kwargs=kwargs, **kwargs)
@@ -6333,6 +6335,16 @@ def perform_request_log(req, date=""):
     req.write("</html>")
     return "\n"
 
+def get_all_field_values(tag):
+    """
+    Return all existing values stored for a given tag.
+    @param tag: the full tag, e.g. 909C0b
+    @type tag: string
+    @return: the list of values
+    @rtype: list of strings
+    """
+    table = 'bib%02dx' % int(tag[:2])
+    return [row[0] for row in run_sql("SELECT DISTINCT(value) FROM %s WHERE tag=%%s" % table, (tag, ))]
 
 def get_most_popular_field_values(recids, tags, exclude_values=None, count_repetitive_values=True):
     """
@@ -6432,16 +6444,3 @@ def perform_external_collection_search_with_em(req, current_collection, pattern_
                             print_search_info=em == "" or EM_REPOSITORY["search_info"] in em,
                             print_see_also_box=em == "" or EM_REPOSITORY["see_also_box"] in em,
                             print_body=em == "" or EM_REPOSITORY["body"] in em)
-
-
-
-def get_all_field_values(tag):
-    """
-    Return all existing values stored for a given tag.
-    @param tag: the full tag, e.g. 909C0b
-    @type tag: string
-    @return: the list of values
-    @rtype: list of strings
-    """
-    table = 'bib%2dx' % int(tag[:2])
-    return [row[0] for row in run_sql("SELECT DISTINCT(value) FROM %s WHERE tag=%%s" % table, (tag, ))]

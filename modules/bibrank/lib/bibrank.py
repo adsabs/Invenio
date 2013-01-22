@@ -71,6 +71,7 @@ __revision__ = "$Id$"
 
 
 import sys
+import traceback
 import ConfigParser
 
 from invenio.config import CFG_ETCDIR
@@ -94,6 +95,9 @@ from invenio.bibrank_word_indexer import word_similarity #@UnusedImport
 from invenio.bibrank_citerank_indexer import citerank #@UnusedImport
 from invenio.solrutils_bibrank_indexer import word_similarity_solr #@UnusedImport
 from invenio.xapianutils_bibrank_indexer import word_similarity_xapian #@UnusedImport
+from invenio.bibrank_selfcites_task import process_updates as selfcites
+# pylint: enable=W0611
+
 
 nb_char_in_line = 50  # for verbose pretty printing
 chunksize = 1000 # default size of chunks that the records will be treated by
@@ -162,6 +166,7 @@ def task_run_core():
                     % key)
     except StandardError, e:
         write_message("\nException caught: %s" % e, sys.stderr)
+        write_message(traceback.format_exc()[:-1])
         register_exception()
         task_update_status("ERROR")
         sys.exit(1)

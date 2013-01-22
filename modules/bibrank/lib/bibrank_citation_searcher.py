@@ -55,7 +55,7 @@ class CitationDictsDataCacher(DataCacher):
             return alldicts
         def timestamp_verifier():
             res = run_sql("""SELECT DATE_FORMAT(last_updated, '%Y-%m-%d %H:%i:%s')
-                              FROM rnkMETHOD WHERE name='citation'""")
+                             FROM rnkMETHOD WHERE name='citation'""")
             if res:
                 return res[0][0]
             else:
@@ -84,6 +84,14 @@ def get_citation_dict(dictname):
     else:
         CACHE_CITATION_DICTS.recreate_cache_if_needed()
     return CACHE_CITATION_DICTS.cache.get(dictname, {})
+
+def get_refers_to(recordid):
+    """Return a list of records referenced by this record"""
+    ret = []
+    cache_cited_by_dictionary = get_citation_dict("reversedict")
+    if cache_cited_by_dictionary.has_key(recordid):
+        ret = cache_cited_by_dictionary[recordid]
+    return ret
 
 def get_cited_by(recordid):
     """Return a list of records that cite recordid"""

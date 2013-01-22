@@ -21,7 +21,8 @@ import cgi
 import re
 import operator
 
-from invenio.config import CFG_SITE_URL, CFG_SITE_LANG, CFG_SITE_RECORD
+from invenio.config import CFG_SITE_URL, CFG_SITE_LANG, CFG_SITE_RECORD, \
+     CFG_SITE_SECURE_URL
 from invenio.messages import gettext_set_language
 from invenio.dateutils import convert_datetext_to_dategui
 from invenio.urlutils import create_html_link
@@ -42,7 +43,7 @@ class Template:
         }
 
 
-    def tmpl_submit_home_page(self, ln, catalogues):
+    def tmpl_submit_home_page(self, ln, catalogues, user_info=None):
         """
         The content of the home page of the submit engine
 
@@ -51,10 +52,20 @@ class Template:
           - 'ln' *string* - The language to display the interface in
 
           - 'catalogues' *string* - The HTML code for the catalogues list
+
+          - 'user_info' *dict* - The user info object
         """
 
         # load the right message language
         _ = gettext_set_language(ln)
+
+        login_note = ""
+        if user_info and user_info['guest'] == '1':
+            login_note = '<em>(' + create_html_link(CFG_SITE_SECURE_URL + '/youraccount/login',
+                                          urlargd={'referer': CFG_SITE_SECURE_URL + user_info['uri'],
+                                                   'ln': ln},
+                                          link_label=cgi.escape(_("Login to display all document types you can access"))) + \
+                                          ')</em>'
 
         return """
           <script type="text/javascript" language="Javascript1.2">
@@ -62,7 +73,7 @@ class Template:
           </script>
            <table class="searchbox" width="100%%" summary="">
               <tr>
-                  <th class="portalboxheader">%(document_types)s:</th>
+                  <th class="portalboxheader">%(document_types)s: %(login_note)s</th>
               </tr>
               <tr>
                   <td class="portalboxbody">
@@ -83,6 +94,7 @@ class Template:
               'please_select' : _("Please select the type of document you want to submit"),
               'catalogues' : catalogues,
               'ln' : ln,
+              'login_note' : login_note,
             }
 
     def tmpl_submit_home_catalog_no_content(self, ln):
@@ -2136,11 +2148,12 @@ class Template:
                      'warning' : _("WARNING! Upon confirmation, an email will be sent to the referee.")
                    }
             if auth_code == 0:
-                out += "<br />" + _("As a referee for this document, you may click this button to approve or reject it") + ":<br />" +\
-                       """<input class="adminbutton" type="submit" name="approval" value="%(approve)s" onclick="window.location='approve.py?access=%(access)s&amp;ln=%(ln)s';return false;" />""" % {
+                out += "<br />" + _("As a referee for this document, you may approve or reject it from the submission interface") + ":<br />" +\
+                       """<input class="adminbutton" type="submit" name="approval" value="%(approve)s" onclick="window.location='%(siteurl)s/submit?doctype=%(doctype)s&amp;ln=%(ln)s';return false;" />""" % {
                          'approve' : _("Approve/Reject"),
-                         'access' : access,
-                         'ln' : ln
+                         'siteurl' : CFG_SITE_URL,
+                         'doctype' : doctype,
+                         'ln'      : ln
                        }
         if status == "approved":
             out += _("This document has been %(x_fmt_open)sapproved%(x_fmt_close)s.") % {'x_fmt_open': '<strong class="headline">', 'x_fmt_close': '</strong>'}

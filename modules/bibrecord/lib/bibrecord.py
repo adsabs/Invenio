@@ -301,7 +301,7 @@ def record_add_field(rec, tag, ind1=' ', ind2=' ', controlfield_value='',
                 else:
                     field_position_global = 1
         else:
-            if tag in ('FMT', 'FFT'):
+            if tag in ('FMT', 'FFT', 'BDR', 'BDM'):
                 # Add the new tag to the end of the record.
                 if tag_field_positions_global:
                     field_position_global = max(tag_field_positions_global) + 1
@@ -314,7 +314,7 @@ def record_add_field(rec, tag, ind1=' ', ind2=' ', controlfield_value='',
                 # right global field position.
                 immediate_lower_tag = '000'
                 for rec_tag in rec:
-                    if (tag not in ('FMT', 'FFT') and
+                    if (tag not in ('FMT', 'FFT', 'BDR', 'BDM') and
                         immediate_lower_tag < rec_tag < tag):
                         immediate_lower_tag = rec_tag
 
@@ -1083,6 +1083,17 @@ def record_strip_empty_fields(rec, tag=None):
             else:
                 del rec[tag]
 
+def record_strip_controlfields(rec):
+    """
+    Removes all non-empty controlfields from the record
+
+    @param rec:  A record dictionary structure
+    @type  rec:  dictionary
+    """
+    for tag in rec.keys():
+        if tag[:2] == '00' and rec[tag][0][3]:
+            del rec[tag]
+
 def record_order_subfields(rec, tag=None):
     """ Orders subfields from a record alphabetically based on subfield code.
     If 'tag' is not None, only a specific tag of the record will be reordered,
@@ -1596,7 +1607,7 @@ def _correct_record(record):
                 str([f[4] for f in record[tag]]) + ')'))
             record['000'] = record.pop(tag)
             tag = '000'
-        elif not ('001' <= tag <= upper_bound or tag in ('FMT', 'FFT')):
+        elif not ('001' <= tag <= upper_bound or tag in ('FMT', 'FFT', 'BDR', 'BDM')):
             errors.append(2)
             record['000'] = record.pop(tag)
             tag = '000'

@@ -38,7 +38,8 @@ from invenio.config import \
      CFG_SITE_URL, \
      CFG_PYLIBDIR, \
      CFG_WEBSUBMIT_STORAGEDIR, \
-     CFG_DEVEL_SITE
+     CFG_DEVEL_SITE, \
+     CFG_SITE_SECURE_URL
 from invenio.dbquery import Error
 from invenio.access_control_engine import acc_authorize_action
 from invenio.webpage import page, error_page, warning_page
@@ -50,6 +51,7 @@ from invenio.websubmit_config import CFG_RESERVED_SUBMISSION_FILENAMES, \
 from invenio.messages import gettext_set_language, wash_language
 from invenio.webstat import register_customevent
 from invenio.errorlib import register_exception
+from invenio.urlutils import make_canonical_urlargd, redirect_to_url
 from invenio.websubmitadmin_engine import string_is_alphanumeric_including_underscore
 
 from invenio.websubmit_dblayer import \
@@ -1236,6 +1238,7 @@ def home(req, catalogues_text, c=CFG_SITE_NAME, ln=CFG_SITE_LANG):
     # get user ID:
     try:
         uid = getUid(req)
+        user_info = collect_user_info(req)
     except Error, e:
         return error_page(e, req, ln)
 
@@ -1244,7 +1247,8 @@ def home(req, catalogues_text, c=CFG_SITE_NAME, ln=CFG_SITE_LANG):
 
     finaltext = websubmit_templates.tmpl_submit_home_page(
                     ln = ln,
-                    catalogues = catalogues_text
+                    catalogues = catalogues_text,
+                    user_info = user_info,
                 )
 
     return page(title=_("Submit"),
@@ -1492,9 +1496,18 @@ def action(req, c=CFG_SITE_NAME, ln=CFG_SITE_LANG, doctype=""):
             statustext.append(action_details[5])
 
     if not snameCateg and not actionShortDesc:
-        return page_not_authorized(req, "../submit",
-                                   uid=uid,
-                                   navmenuid='submit')
+        if isGuestUser(uid):
+            # If user is guest and does not have access to any of the
+            # categories, offer to login.
+            return redirect_to_url(req, "%s/youraccount/login%s" % (
+                CFG_SITE_SECURE_URL,
+                make_canonical_urlargd({'referer' : CFG_SITE_SECURE_URL + req.unparsed_uri, 'ln' : ln}, {})),
+                                   norobot=True)
+        else:
+            return page_not_authorized(req, "../submit",
+                                       uid=uid,
+                                       text=_("You are not authorized to access this submission interface."),
+                                       navmenuid='submit')
 
 
     ## Send the gathered information to the template so that the doctype's

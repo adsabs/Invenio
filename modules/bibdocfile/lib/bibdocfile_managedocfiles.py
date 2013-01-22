@@ -877,7 +877,8 @@ def create_file_upload_interface(recid,
             'revise_format_warning': _('Alternative formats uploaded for current version of this file will be removed'),
             'previous_versions_label': _('Keep previous versions'),
             'cancel': _('Cancel'),
-            'upload': _('Upload')}
+            'upload': _('Upload'),
+            'submit_or_button': form_url_params and 'button' or 'submit'}
         body += '''
         <input type="hidden" name="recid" value="%(recid)i"/>
         <input type="hidden" name="ln" value="%(ln)s"/>
@@ -1114,10 +1115,10 @@ def build_updated_files_list(bibdocs, actions, recid, display_hidden_files=False
         status = bibdoc.get_status()
         if status == "DELETED":
             status = ''
-
-        abstract_bibdocs[bibdoc.get_docname()] = \
+        brd = BibRecDocs(recid)
+        abstract_bibdocs[brd.get_docname(bibdoc.id)] = \
             {'list_latest_files': bibdoc.list_latest_files(),
-             'get_docname': bibdoc.get_docname(),
+             'get_docname': brd.get_docname(bibdoc.id),
              'updated': False,
              'get_type': bibdoc.get_type(),
              'get_status': status,
@@ -1146,16 +1147,15 @@ def build_updated_files_list(bibdocs, actions, recid, display_hidden_files=False
                 del abstract_bibdocs[bibdoc_name]
 
             # First instantiate a fake BibDocMoreInfo object, without any side effect
-            more_info = BibDocMoreInfo(1, cPickle.dumps({}))
+            more_info = BibDocMoreInfo(1, cache_only = False, initial_data = {})
             if description is not None:
-                more_info.more_info['descriptions'] = {1: {fileformat:description}}
+                more_info['descriptions'] = {1: {fileformat:description}}
             if comment is not None:
-                more_info.more_info['comments'] = {1: {fileformat:comment}}
+                more_info['comments'] = {1: {fileformat:comment}}
             abstract_bibdocs[(rename or bibdoc_name)] = \
-                {'list_latest_files': [BibDocFile(file_path, doctype, version=1,
-                                                  name=(rename or bibdoc_name),
-                                                  format=fileformat,
-                                                  recid=int(recid), docid=-1,
+                {'list_latest_files': [BibDocFile(file_path, [(int(recid), doctype,(rename or bibdoc_name))], version=1,
+                                                  docformat=fileformat,
+                                                  docid=-1,
                                                   status=file_restriction,
                                                   checksum=checksum,
                                                   more_info=more_info)],
@@ -1186,13 +1186,13 @@ def build_updated_files_list(bibdocs, actions, recid, display_hidden_files=False
             # First instantiate a fake BibDocMoreInfo object, without any side effect
             more_info = BibDocMoreInfo(1, cPickle.dumps({}))
             if description is not None:
-                more_info.more_info['descriptions'] = {1: {fileformat:description}}
+                more_info['descriptions'] = {1: {fileformat:description}}
             if comment is not None:
-                more_info.more_info['comments'] = {1: {fileformat:comment}}
+                more_info['comments'] = {1: {fileformat:comment}}
             abstract_bibdocs[bibdoc_name]['list_latest_files'].append(\
-                BibDocFile(file_path, doctype, version=1,
-                           name=(rename or bibdoc_name), format=fileformat,
-                           recid=int(recid), docid=-1, status='',
+                BibDocFile(file_path, [(int(recid), doctype, (rename or bibdoc_name))], version=1,
+                           docformat=fileformat,
+                           docid=-1, status='',
                            checksum=checksum, more_info=more_info))
             abstract_bibdocs[bibdoc_name]['updated'] = True
 
@@ -1891,13 +1891,15 @@ def add(file_path, bibdoc_name, rename, doctype, description, comment,
     Return the bibdoc that has been newly added.
     """
     try:
+        brd = BibRecDocs(recid)
         if os.path.exists(file_path):
             # Add file
             bibdoc = bibrecdocs.add_new_file(file_path,
                                              doctype,
                                              rename or bibdoc_name,
                                              never_fail=True)
-            _do_log(working_dir, 'Added ' + bibdoc.get_docname() + ': ' + \
+
+            _do_log(working_dir, 'Added ' + brd.get_docname(bibdoc.id) + ': ' + \
                     file_path)
 
             # Add icon
@@ -1916,7 +1918,7 @@ def add(file_path, bibdoc_name, rename, doctype, description, comment,
                                 icon_suffix = icon_size.replace('>', '').replace('<', '').replace('^', '').replace('!', '')
                                 bibdoc.add_icon(iconpath, subformat=CFG_BIBDOCFILE_DEFAULT_ICON_SUBFORMAT + "-" + icon_suffix)
                             _do_log(working_dir, 'Added icon to ' + \
-                                    bibdoc.get_docname() + ': ' + iconpath)
+                                    brd.get_docname(bibdoc.id) + ': ' + iconpath)
                         except InvenioBibDocFileError, e:
                             # Most probably icon already existed.
                             pass
@@ -1928,7 +1930,7 @@ def add(file_path, bibdoc_name, rename, doctype, description, comment,
                     bibdoc.set_description(description,
                                            bibdocfile.get_format())
                     _do_log(working_dir, 'Described ' + \
-                            bibdoc.get_docname() + ': ' + description)
+                            brd.get_docname(bibdoc.id) + ': ' + description)
 
             # Add comment
             if comment:
@@ -1937,12 +1939,12 @@ def add(file_path, bibdoc_name, rename, doctype, description, comment,
                     bibdoc.set_comment(comment,
                                        bibdocfile.get_format())
                     _do_log(working_dir, 'Commented ' + \
-                            bibdoc.get_docname() + ': ' + comment)
+                            brd.get_docname(bibdoc.id) + ': ' + comment)
 
             # Set restriction
             bibdoc.set_status(file_restriction)
             _do_log(working_dir, 'Set restriction of ' + \
-                    bibdoc.get_docname() + ': ' + \
+                    brd.get_docname(bibdoc.id) + ': ' + \
                     file_restriction or '(no restriction)')
 
             return bibdoc
@@ -1968,6 +1970,7 @@ def add_format(file_path, bibdoc_name, recid, doctype, working_dir,
     Adds a new format to a bibdoc using bibdocfile CLI
     """
     try:
+        brd = BibRecDocs(recid)
         if os.path.exists(file_path):
 
             # We must retrieve previous description and comment as
@@ -1983,7 +1986,7 @@ def add_format(file_path, bibdoc_name, recid, doctype, working_dir,
                                                prev_desc,
                                                prev_comment)
             _do_log(working_dir, 'Added new format to ' + \
-                    bibdoc.get_docname() + ': ' + file_path)
+                    brd.get_docname(bibdoc.id) + ': ' + file_path)
 
             # Add icons
             has_added_default_icon_subformat_p = False
@@ -2003,7 +2006,7 @@ def add_format(file_path, bibdoc_name, recid, doctype, working_dir,
 
                                 bibdoc.add_icon(iconpath, subformat=CFG_BIBDOCFILE_DEFAULT_ICON_SUBFORMAT + "-" + icon_suffix)
                             _do_log(working_dir, 'Added icon to ' + \
-                                    bibdoc.get_docname() + ': ' + iconpath)
+                                    brd.get_docname(bibdoc.id) + ': ' + iconpath)
                         except InvenioBibDocFileError, e:
                             # Most probably icon already existed.
                             pass
@@ -2037,7 +2040,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
     added_bibdoc = None
     try:
         if os.path.exists(file_path) or not file_path:
-
+            brd = BibRecDocs(recid)
             # Perform pending actions
             if pending_bibdocs.has_key(bibdoc_name):
                 # We have some pending actions to apply before
@@ -2058,14 +2061,14 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                                                      pending_bibdocs[bibdoc_name][0],
                                                      bibdoc_name,
                                                      never_fail=True)
-                    _do_log(working_dir, 'Added ' + bibdoc.get_docname() + ': ' + \
+                    _do_log(working_dir, 'Added ' + brd.get_docname(bibdoc.id) + ': ' + \
                             file_path)
                     added_bibdoc = bibdoc
 
                     # Set restriction
                     bibdoc.set_status(file_restriction)
                     _do_log(working_dir, 'Set restriction of ' + \
-                            bibdoc.get_docname() + ': ' + \
+                            bibrecdocs.get_docname(bibdoc.id) + ': ' + \
                             file_restriction or '(no restriction)')
 
                 # We must retrieve previous description and comment as
@@ -2082,7 +2085,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                                                    description=bibdoc.get_description(),
                                                    comment=bibdoc.get_comment())
                         _do_log(working_dir, 'Added new format to' + \
-                                bibdoc.get_docname() + ': ' + file_path)
+                                brd.get_docname(bibdoc.id) + ': ' + file_path)
 
                 # All pending modification have been applied,
                 # so delete
@@ -2101,7 +2104,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                                                     bibdoc_name,
                                                     prev_desc,
                                                     prev_comment)
-                _do_log(working_dir, 'Revised ' + bibdoc.get_docname() + \
+                _do_log(working_dir, 'Revised ' + brd.get_docname(bibdoc.id) + \
                         ' with : ' + file_path)
 
             elif file_path:
@@ -2119,7 +2122,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                                                      never_fail=True,
                                                      description=prev_desc,
                                                      comment=prev_comment)
-                    _do_log(working_dir, 'Added ' + bibdoc.get_docname() + ': ' + \
+                    _do_log(working_dir, 'Added ' + brd.get_docname(bibdoc.id) + ': ' + \
                             file_path)
 
                 except InvenioBibDocFileError, e:
@@ -2153,7 +2156,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
 
             # Rename
             if rename and rename != bibdoc_name:
-                bibdoc.change_name(rename)
+                bibrecdocs.change_name(newname=rename, docid=bibdoc.id)
                 _do_log(working_dir, 'renamed ' + bibdoc_name +' to '+ rename)
 
             # Add icons
@@ -2174,7 +2177,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                                     icon_suffix = icon_size.replace('>', '').replace('<', '').replace('^', '').replace('!', '')
                                     bibdoc.add_icon(iconpath, subformat=CFG_BIBDOCFILE_DEFAULT_ICON_SUBFORMAT + "-" + icon_suffix)
                                 _do_log(working_dir, 'Added icon to ' + \
-                                        bibdoc.get_docname() + ': ' + iconpath)
+                                        brd.get_docname(bibdoc.id) + ': ' + iconpath)
                             except InvenioBibDocFileError, e:
                                 # Most probably icon already existed.
                                 pass
@@ -2186,7 +2189,7 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                     bibdoc.set_description(description,
                                            bibdocfile.get_format())
                     _do_log(working_dir, 'Described ' + \
-                            bibdoc.get_docname() + ': ' + description)
+                            brd.get_docname(bibdoc.id) + ': ' + description)
             # Comment
             if comment:
                 bibdocfiles = bibdoc.list_latest_files()
@@ -2194,12 +2197,12 @@ def revise(file_path, bibdoc_name, rename, doctype, description,
                     bibdoc.set_comment(comment,
                                        bibdocfile.get_format())
                     _do_log(working_dir, 'Commented ' + \
-                            bibdoc.get_docname() + ': ' + comment)
+                            brd.get_docname(bibdoc.id) + ': ' + comment)
 
             # Set restriction
             bibdoc.set_status(file_restriction)
             _do_log(working_dir, 'Set restriction of ' + \
-                    bibdoc.get_docname() + ': ' + \
+                    brd.get_docname(bibdoc.id) + ': ' + \
                     file_restriction or '(no restriction)')
         else:
             # File has been later renamed or deleted.
@@ -2268,7 +2271,7 @@ def _do_log(log_dir, msg):
     file_desc.write("%s --> %s\n" %(time.strftime("%Y-%m-%d %H:%M:%S"), msg))
     file_desc.close()
 
-def _create_icon(file_path, icon_size, format='gif', verbosity=9):
+def _create_icon(file_path, icon_size, docformat='gif', verbosity=9):
     """
     Creates icon of given file.
 
@@ -2326,7 +2329,11 @@ $(document).ready(function() {
     };
 
     // bind form using 'ajaxForm'
-    $('form:has(#balloonReviseFileInput)').ajaxForm(options);
+    var this_form = $('form:has(#balloonReviseFileInput)')
+    $('#bibdocfilemanagedocfileuploadbutton').click(function() {
+                this_form.bibdocfilemanagedocfileuploadbuttonpressed=true;
+                this_form.ajaxSubmit(options);
+    })
 
 });
 
@@ -2769,7 +2776,7 @@ revise_balloon = '''
               <div id="restrictionBox" style="display:none">%(restrictions)s</div>
               <div id="keepPreviousVersions" style="display:none"><input type="checkbox" id="balloonReviseFileKeep" name="keepPreviousFiles" checked="checked" /><label for="balloonReviseFileKeep">%(previous_versions_label)s</label>&nbsp;<small>[<a href="" onclick="alert('%(previous_versions_help)s');return false;">?</a>]</small></div>
               <p id="warningFormats" style="display:none"><img src="%(CFG_SITE_URL)s/img/warning.png" alt="Warning"/> %(revise_format_warning)s&nbsp;[<a href="" onclick="alert('%(revise_format_help)s');return false;">?</a>]</p>
-              <div style="text-align:right;margin-top:5px"><input type="button" value="%(cancel)s" onclick="javascript:hide_revise_panel();"/> <input type="submit" value="%(upload)s"/></div>
+              <div style="text-align:right;margin-top:5px"><input type="button" value="%(cancel)s" onclick="javascript:hide_revise_panel();"/> <input type="%(submit_or_button)s" id="bibdocfilemanagedocfileuploadbutton" value="%(upload)s"/></div>
             </td>
           </tr>
         </table>

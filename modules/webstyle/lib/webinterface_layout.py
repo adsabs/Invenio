@@ -207,6 +207,13 @@ except:
     WebInterfaceSword = WebInterfaceDumbPages
 
 try:
+    from invenio.ping_webinterface import \
+         WebInterfacePingPages
+except:
+    register_exception(alert_admin=True, subject='EMERGENCE')
+    WebInterfacePingPages = WebInterfaceDumbPages
+
+try:
     from invenio.bibauthorid_webinterface import WebInterfaceBibAuthorIDPages
 except:
     register_exception(alert_admin=True, subject='EMERGENCY')
@@ -232,6 +239,24 @@ try:
 except:
     register_exception(alert_admin=True, subject='EMERGENCY')
     WebInterfaceWebAuthorPages = WebInterfaceDumbPages
+
+try:
+    from invenio.docextract_webinterface import WebInterfaceDocExtract
+except:
+    register_exception(alert_admin=True, subject='EMERGENCY')
+    WebInterfaceDocExtract = WebInterfaceDumbPages
+
+try:
+    from invenio.webcomment_webinterface import WebInterfaceYourCommentsPages
+except:
+    register_exception(alert_admin=True, subject='EMERGENCY')
+    WebInterfaceYourAlertsPages = WebInterfaceDumbPages
+
+try:
+    from invenio.goto_webinterface import WebInterfaceGotoPages
+except:
+    register_exception(alert_admin=True, subject='EMERGENCY')
+    WebInterfaceGotoPages = WebInterfaceDumbPages
 
 if CFG_OPENAIRE_SITE:
     try:
@@ -267,34 +292,38 @@ class WebInterfaceInvenio(WebInterfaceSearchInterfacePages):
     the other modules."""
 
     _exports = WebInterfaceSearchInterfacePages._exports + \
-        [
-        'youraccount',
-        'youralerts',
-        'yourbaskets',
-        'yourmessages',
-        'yourloans',
-        'ill',
-        'yourgroups',
-        'yourtickets',
-        'comments',
-        'error',
-        'oai2d', ('oai2d.py', 'oai2d'),
-        ('getfile.py', 'getfile'),
-        'submit',
-        'rss',
-        'stats',
-        'journal',
-        'help',
-        'unapi',
-        'exporter',
-        'kb',
-        'batchuploader',
-        'bibsword',
-        'person',
-        'admin2',
-        'linkbacks',
-        'author'
-        ] + test_exports + openaire_exports
+               [
+                   'youraccount',
+                   'youralerts',
+                   'yourbaskets',
+                   'yourmessages',
+                   'yourloans',
+                   'yourcomments',
+                   'ill',
+                   'yourgroups',
+                   'yourtickets',
+                   'comments',
+                   'error',
+                   'oai2d', ('oai2d.py', 'oai2d'),
+                   ('getfile.py', 'getfile'),
+                   'submit',
+                   'rss',
+                   'stats',
+                   'journal',
+                   'help',
+                   'unapi',
+                   'exporter',
+                   'kb',
+                   'batchuploader',
+                   'bibsword',
+                   'ping',
+                   'person',
+                   'admin2',
+                   'linkbacks',
+                   'author',
+                   'textmining',
+                   'goto',
+               ] + test_exports + openaire_exports
 
     def __init__(self):
         self.getfile = bibdocfile_legacy_getfile
@@ -325,11 +354,15 @@ class WebInterfaceInvenio(WebInterfaceSearchInterfacePages):
     admin2 = WebInterfaceAdminPages()
     batchuploader = WebInterfaceBatchUploaderPages()
     bibsword = WebInterfaceSword()
+    ping = WebInterfacePingPages()
     person = WebInterfaceBibAuthorIDPages()
     linkbacks = WebInterfaceRecentLinkbacksPages()
     #redirects author to the new webauthor
     author = WebInterfaceWebAuthorPages()
     #author = WebInterfaceAuthorPages()
+    textmining = WebInterfaceDocExtract()
+    yourcomments = WebInterfaceYourCommentsPages()
+    goto = WebInterfaceGotoPages()
 
 # This creates the 'handler' function, which will be invoked directly
 # by mod_python.

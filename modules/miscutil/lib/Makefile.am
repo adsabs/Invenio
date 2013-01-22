@@ -1,5 +1,5 @@
 ## This file is part of Invenio.
-## Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012 CERN.
+## Copyright (C) 2003, 2004, 2005, 2006, 2007, 2008, 2009, 2010, 2011, 2012, 2013 CERN.
 ##
 ## Invenio is free software; you can redistribute it and/or
 ## modify it under the terms of the GNU General Public License as
@@ -84,7 +84,8 @@ pylib_DATA = __init__.py \
              jsonutils_unit_tests.py \
              sequtils_cnum.py \
              sequtils.py \
-             sequtils_regression_tests.py
+             sequtils_regression_tests.py \
+             crossrefutils.py
 
 noinst_DATA = testimport.py \
               kwalitee.py \
@@ -95,6 +96,7 @@ tmpdir = $(prefix)/var/tmp
 tmp_DATA = intbitset_example.int
 
 EXTRA_DIST = $(pylib_DATA) \
+             $(tmp_DATA) \
              testimport.py \
              kwalitee.py \
              pep8.py \
@@ -104,8 +106,22 @@ EXTRA_DIST = $(pylib_DATA) \
              intbitset_impl.c \
              intbitset_setup.py \
              intbitset.pyx \
-             $(tmp_DATA)
-
+             solrutils \
+             solrutils/schema.xml \
+             solrutils/java_sources.txt \
+             solrutils/org \
+             solrutils/org/invenio_software \
+             solrutils/org/invenio_software/solr \
+             solrutils/org/invenio_software/solr/BitSetFieldCollector.java \
+             solrutils/org/invenio_software/solr/InvenioFacetComponent.java \
+             solrutils/org/invenio_software/solr/FieldCollectorBase.java \
+             solrutils/org/invenio_software/solr/IntFieldCollector.java \
+             solrutils/org/invenio_software/solr/FieldCollector.java \
+             solrutils/org/invenio_software/solr/InvenioQueryComponent.java \
+             solrutils/org/invenio_software/solr/InvenioBitsetStreamResponseWriter.java \
+             solrutils/org/invenio_software/solr/InvenioBitSet.java \
+             solrutils/org/invenio_software/solr/StringFieldCollector.java \
+             solrutils/solrconfig.xml
 
 all:
 	$(PYTHON) $(srcdir)/intbitset_setup.py build_ext
