@@ -990,15 +990,12 @@ def insert_record_bibxxx(tag, value, pretend=False):
 
     value_hash = hashlib.sha256(value).hexdigest()
     
-    fl = open('/tmp/log_test_bibupload', 'a')
-    
     if task_get_option('update_mode') is None:
         query = """INSERT INTO %s """ % table_name
         query += """ (tag, value, value_hash) values (%s , %s, %s)"""
         params = (tag, value, value_hash)
         try:
             row_id = run_sql(query, params)
-            fl.write('1- Insert with hash at first try \t %s \t %s \n' % (tag, value))
         except IntegrityError:
             # check if the tag, value combination exists in the table
             query_sel_hash = """SELECT id, value FROM %s """ % table_name
@@ -1006,7 +1003,6 @@ def insert_record_bibxxx(tag, value, pretend=False):
             params_sel_hash = (tag, value_hash)
             try:
                 res = run_sql(query_sel_hash, params_sel_hash)
-                fl.write('1- Select with hash \t %s \t %s \n' % (tag, value))
             except Error, error:
                 write_message("   Error during the insert_record_bibxxx function (select using the hash): %s "
                     % error, verbose=1, stream=sys.stderr)
@@ -1023,7 +1019,6 @@ def insert_record_bibxxx(tag, value, pretend=False):
             else:
                 write_message("   Detected possible conflict in the hashing, proceeding with classic approach.",
                                verbose=1, stream=sys.stderr)
-                fl.write('1- Select with classic mode \t %s \t %s \n' % (tag, value))
                 #otherwise I have to see if there is exactly the same string and if not Insert a new one
                 query_sel_classic = """SELECT id, value FROM %s """ % table_name
                 query_sel_classic += """ WHERE tag=%s AND value=%s"""
@@ -1072,12 +1067,10 @@ def insert_record_bibxxx(tag, value, pretend=False):
             #now I check if the value I retrieved is exactly the same I was going to retrieve
             if row_value == value:
                 #if the value was exactly the one I was looking for I already have the id
-                fl.write('2- Select with hash at first try \t %s \t %s \n' % (tag, value))
                 pass
             else:
                 write_message("   Detected possible conflict in the hashing (select first), proceeding with classic approach.",
                                verbose=1, stream=sys.stderr)
-                fl.write('2- Select with classic mode \t %s \t %s \n' % (tag, value))
                 #otherwise I have to see if there is exactly the same string and if not Insert a new one
                 query_sel_classic = """SELECT id, value FROM %s """ % table_name
                 query_sel_classic += """ WHERE tag=%s AND value=%s"""
@@ -1113,7 +1106,6 @@ def insert_record_bibxxx(tag, value, pretend=False):
                           , verbose=1, stream=sys.stderr) 
             raise Error
         else:
-            fl.write('2- Insert with hash \t %s \t %s \n' % (tag, value))
             #otherwise I need to proceed with the insert query with hashing
             query = """INSERT INTO %s """ % table_name
             query += """ (tag, value, value_hash) values (%s , %s, %s)"""
@@ -1124,8 +1116,7 @@ def insert_record_bibxxx(tag, value, pretend=False):
                 write_message("   Error during the insert_record_bibxxx (select first) function (Insert with initial hash) : %s "
                     % error, verbose=1, stream=sys.stderr)
                 #if I an error here something is really wrong with the code
-                raise
-    fl.close()
+                raise 
     return (table_name, row_id)
 
 def insert_record_bibrec_bibxxx(table_name, id_bibxxx,
