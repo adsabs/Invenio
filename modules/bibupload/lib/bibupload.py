@@ -37,6 +37,8 @@ import tempfile
 import urlparse
 import urllib2
 import urllib
+import hashlib
+import pickle
 
 from invenio.config import CFG_OAI_ID_FIELD, \
      CFG_BIBUPLOAD_REFERENCE_TAG, \
@@ -54,7 +56,8 @@ from invenio.jsonutils import json, CFG_JSON_AVAILABLE
 from invenio.bibupload_config import CFG_BIBUPLOAD_CONTROLFIELD_TAGS, \
     CFG_BIBUPLOAD_SPECIAL_TAGS
 from invenio.dbquery import run_sql, \
-                            Error
+                            Error, \
+                            IntegrityError
 from invenio.bibrecord import create_records, \
                               record_add_field, \
                               record_delete_field, \
@@ -985,44 +988,135 @@ def insert_record_bibxxx(tag, value, pretend=False):
     # determine into which table one should insert the record
     table_name = 'bib'+tag[0:2]+'x'
 
-    # check if the tag, value combination exists in the table
-    query = """SELECT id,value FROM %s """ % table_name
-    query += """ WHERE tag=%s AND value=%s"""
-    params = (tag, value)
-    try:
-        res = run_sql(query, params)
-    except Error, error:
-        write_message("   Error during the insert_record_bibxxx function : %s "
-            % error, verbose=1, stream=sys.stderr)
-
-    # Note: compare now the found values one by one and look for
-    # string binary equality (e.g. to respect lowercase/uppercase
-    # match), regardless of the charset etc settings.  Ideally we
-    # could use a BINARY operator in the above SELECT statement, but
-    # we would have to check compatibility on various MySQLdb versions
-    # etc; this approach checks all matched values in Python, not in
-    # MySQL, which is less cool, but more conservative, so it should
-    # work better on most setups.
-    for row in res:
-        row_id = row[0]
-        row_value = row[1]
-        if row_value == value:
-            return (table_name, row_id)
-
-    # We got here only when the tag,value combination was not found,
-    # so it is now necessary to insert the tag,value combination into
-    # bibxxx table as new.
-    query = """INSERT INTO %s """ % table_name
-    query += """ (tag, value) values (%s , %s)"""
-    params = (tag, value)
-    try:
-        if not pretend:
+    value_hash = hashlib.sha256(value).hexdigest()
+    
+    if task_get_option('update_mode') is None:
+        query = """INSERT INTO %s """ % table_name
+        query += """ (tag, value, value_hash) values (%s , %s, %s)"""
+        params = (tag, value, value_hash)
+        try:
             row_id = run_sql(query, params)
+        except IntegrityError:
+            # check if the tag, value combination exists in the table
+            query_sel_hash = """SELECT id, value FROM %s """ % table_name
+            query_sel_hash += """ WHERE tag=%s AND value_hash=%s"""
+            params_sel_hash = (tag, value_hash)
+            try:
+                res = run_sql(query_sel_hash, params_sel_hash)
+            except Error, error:
+                write_message("   Error during the insert_record_bibxxx function (select using the hash): %s "
+                    % error, verbose=1, stream=sys.stderr)
+            try:
+                row_id, row_value = res[0]
+            except IndexError:
+                write_message("   Insert gave IntegrityError but not able to retrieve the id or the value",
+                               verbose=1, stream=sys.stderr)
+                raise
+            #now I check if the value I retrieved is exactly the same I was going to retrieve
+            if row_value == value:
+                #if the value was exactly the one I was looking for I already have the id
+                pass
+            else:
+                write_message("   Detected possible conflict in the hashing, proceeding with classic approach.",
+                               verbose=1, stream=sys.stderr)
+                #otherwise I have to see if there is exactly the same string and if not Insert a new one
+                query_sel_classic = """SELECT id, value FROM %s """ % table_name
+                query_sel_classic += """ WHERE tag=%s AND value=%s"""
+                params_sel_classic = (tag, value)
+                try:
+                    res_classic = run_sql(query_sel_classic, params_sel_classic)
+                except Error, error:
+                    write_message("   Error during the insert_record_bibxxx function (Select in the classical way): %s "
+                        % error, verbose=1, stream=sys.stderr)
+                #then I process all the values
+                for row in res_classic:
+                    row_id = row[0]
+                    row_value = row[1]
+                    #If I get one that is exactly the same I have, I can return the id
+                    if row_value == value:
+                        return (table_name, row_id)
+                else:
+                    #if I've not found the same value it means that I don't have it in the database
+                    #So I need to insert it
+                    #I prepare a custom hash for sure unique, because the one I have is the same of another one
+                    custom_value_hash = '%s_%s' % (value_hash, len(res_classic))
+                    query_ins = """INSERT INTO %s """ % table_name
+                    query_ins += """ (tag, value, value_hash) values (%s , %s, %s)"""
+                    params_ins = (tag, value, custom_value_hash)
+                    try:
+                        row_id = run_sql(query_ins, params_ins)
+                    except Error, error:
+                        write_message("   Error during the insert_record_bibxxx function (INSERT if the entry with custom hash) : %s "
+                                % error, verbose=1, stream=sys.stderr)
+        except Error, error:
+            write_message("   Error during the insert_record_bibxxx function (Insert with initial hash) : %s "
+                    % error, verbose=1, stream=sys.stderr)
+    else:
+        query_sel_hash = """SELECT id, value FROM %s """ % table_name
+        query_sel_hash += """ WHERE tag=%s AND value_hash=%s"""
+        params_sel_hash = (tag, value_hash)
+        try:
+            res = run_sql(query_sel_hash, params_sel_hash)
+        except Error, error:
+            write_message("   Error during the insert_record_bibxxx function (select using the hash - select first): %s "
+                % error, verbose=1, stream=sys.stderr)
+            res = []
+        if len(res) == 1:
+            #if I have only one result everything is working fine
+            row_id, row_value = res[0]
+            #now I check if the value I retrieved is exactly the same I was going to retrieve
+            if row_value == value:
+                #if the value was exactly the one I was looking for I already have the id
+                pass
+            else:
+                write_message("   Detected possible conflict in the hashing (select first), proceeding with classic approach.",
+                               verbose=1, stream=sys.stderr)
+                #otherwise I have to see if there is exactly the same string and if not Insert a new one
+                query_sel_classic = """SELECT id, value FROM %s """ % table_name
+                query_sel_classic += """ WHERE tag=%s AND value=%s"""
+                params_sel_classic = (tag, value)
+                try:
+                    res_classic = run_sql(query_sel_classic, params_sel_classic)
+                except Error, error:
+                    write_message("   Error during the insert_record_bibxxx (select first) function (Select in the classical way): %s "
+                        % error, verbose=1, stream=sys.stderr)
+                #then I process all the values
+                for row in res_classic:
+                    row_id = row[0]
+                    row_value = row[1]
+                    #If I get one that is exactly the same I have, I can return the id
+                    if row_value == value:
+                        return (table_name, row_id)
+                else:
+                    #if I've not found the same value it means that I don't have it in the database
+                    #So I need to insert it
+                    #I prepare a custom hash for sure unique, because the one I have is the same of another one
+                    custom_value_hash = '%s_%s' % (value_hash, len(res_classic))
+                    query_ins = """INSERT INTO %s """ % table_name
+                    query_ins += """ (tag, value, value_hash) values (%s , %s, %s)"""
+                    params_ins = (tag, value, custom_value_hash)
+                    try:
+                        row_id = run_sql(query_ins, params_ins)
+                    except Error, error:
+                        write_message("   Error during the insert_record_bibxxx (select first) function (INSERT if the entry with custom hash) : %s "
+                                % error, verbose=1, stream=sys.stderr)
+        elif len(res) > 1:
+            #in this case the table is nor well structured
+            write_message("   Error during the insert_record_bibxxx (select first) function (Selection with hash gave multiple records)"
+                          , verbose=1, stream=sys.stderr) 
+            raise Error
         else:
-            return (table_name, 1)
-    except Error, error:
-        write_message("   Error during the insert_record_bibxxx function : %s "
-            % error, verbose=1, stream=sys.stderr)
+            #otherwise I need to proceed with the insert query with hashing
+            query = """INSERT INTO %s """ % table_name
+            query += """ (tag, value, value_hash) values (%s , %s, %s)"""
+            params = (tag, value, value_hash)
+            try:
+                row_id = run_sql(query, params)
+            except Error, error:
+                write_message("   Error during the insert_record_bibxxx (select first) function (Insert with initial hash) : %s "
+                    % error, verbose=1, stream=sys.stderr)
+                #if I an error here something is really wrong with the code
+                raise 
     return (table_name, row_id)
 
 def insert_record_bibrec_bibxxx(table_name, id_bibxxx,
@@ -2115,7 +2209,7 @@ def update_database_with_metadata(record, rec_id, oai_rec_id = "oai", pretend=Fa
     """Update the database tables with the record and the record id given in parameter"""
     for tag in record.keys():
         # check if tag is not a special one:
-        if tag not in CFG_BIBUPLOAD_SPECIAL_TAGS:
+        if tag not in CFG_BIBUPLOAD_SPECIAL_TAGS: # and tag[0:2] in ['02','03','10','24','65','69','70','71','97','98','99']:
             # for each tag there is a list of tuples representing datafields
             tuple_list = record[tag]
             # this list should contain the elements of a full tag [tag, ind1, ind2, subfield_code]
@@ -2389,7 +2483,7 @@ Examples:
 \t\t\tinside a form field called "results".
 """,
             version=__revision__,
-            specific_params=("ircazdS:fno",
+            specific_params=("ircazdS:fnopu",
                  [
                    "insert",
                    "replace",
@@ -2406,6 +2500,8 @@ Examples:
                    "callback-url=",
                    "nonce=",
                    "special-treatment=",
+                   "pickled-input-file",
+                   "update-mode",
                  ]),
             task_submit_elaborate_specific_parameter_fnc=task_submit_elaborate_specific_parameter,
             task_run_fnc=task_run_core)
@@ -2513,6 +2609,14 @@ def task_submit_elaborate_specific_parameter(key, value, opts, args): # pylint: 
         else:
             print >> sys.stderr, """The specified value is not in the list of allowed special treatments codes: %s""" % CFG_BIBUPLOAD_ALLOWED_SPECIAL_TREATMENTS
             return False
+    #parameter that indicates that I'm submitting pikled files
+    elif key in ("-p", "--pickled-input-file", ):
+        task_set_option('pickled_input_file', True)
+    #parameter to control how insert_into_bibxxx works: update mode means that a select from
+    #the db is made before the insert
+    elif key in ("-u", "--update-mode", ):
+        task_set_option('update_mode', True)
+    
     else:
         return False
     return True
@@ -2678,8 +2782,15 @@ def task_run_core():
 
     if task_get_option('file_path') is not None:
         write_message("start preocessing", verbose=3)
-        task_update_progress("Reading XML input")
-        recs = xml_marc_to_records(open_marc_file(task_get_option('file_path')))
+        if task_get_option('pickled_input_file') is None:
+            task_update_progress("Reading XML input")
+            recs = xml_marc_to_records(open_marc_file(task_get_option('file_path')))
+        else:
+            task_update_progress("Reading PICKLED input")
+            file_obj = open(task_get_option('file_path'), 'rb')
+            recs = pickle.load(file_obj)
+            file_obj.close()
+            
         stat['nb_records_to_upload'] = len(recs)
         write_message("   -Open XML marc: DONE", verbose=2)
         task_sleep_now_if_required(can_stop_too=True)
